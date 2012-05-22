@@ -1,2 +1,2 @@
 include README.txt
-recursive-include semidiscrete *py *conf
+recursive-include eoldas *py *conf
