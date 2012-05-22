@@ -10,7 +10,7 @@ MAINTAINER_EMAIL = "j.gomez-dans@ucl.ac.uk"
 URL = 'http://github.com/jgomezdans/eoldas'
 LICENSE = 'Undecided'
 VERSION = "1.0.1"
-DOWNLOAD_URL="https://github.com/jgomezdans/semidiscrete/zipball/master"
+DOWNLOAD_URL="https://github.com/jgomezdans/eoldas/zipball/master"
 
 setup(name='eoldas',
       version=version,
@@ -21,7 +21,10 @@ setup(name='eoldas',
       maintainer_email=MAINTAINER_EMAIL,
       url='http://www.assimila.eu/eoldas',
       license='',
-      packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
+      packages=['eoldas'],
+      package_dir={'eoldas': 'eoldas'},
+      package_data={'eoldas': ['config_files/*.conf']},
+      #packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=False,
       #install_requires=[
@@ -41,11 +44,6 @@ setup(name='eoldas',
               'Operating System :: Unix',
               'Operating System :: MacOS'
               ],
+      
         scripts=['scripts/eoldas.py'],
-        data_files=[('config_files', ["default.conf","eoldas_config.conf", \
-                "Identity2.conf", "Identity.conf", \
-                "kernels.brdf_WW_1_A_2.kernelFiltered.conf", "kernels.conf", \
-                "kernelsSpatial.conf" , "MODIS.conf", \
-                "Obs1.conf", "old_default.conf", "pstate.conf", \
-                "semid_default2.conf", "semid_default.conf", "set_state.conf"])]
       )
