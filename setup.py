@@ -4,7 +4,7 @@ import sys, os
 version = '1.0'
 DISTNAME = "eoldas"
 DESCRIPTION = "An Earth Observation Land Data Assimilation System (EO-LDAS)"
-LONG_DESCRIPTION = open('README.rst').read()
+LONG_DESCRIPTION = open('README.txt').read()
 MAINTAINER = 'Jose Gomez-Dans/NCEO & University College London'
 MAINTAINER_EMAIL = "j.gomez-dans@ucl.ac.uk"
 URL = 'http://github.com/jgomezdans/eoldas'
