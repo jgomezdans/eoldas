@@ -1,7 +1,6 @@
 from setuptools import setup, find_packages
 import sys, os
 
-version = '1.0'
 DISTNAME = "eoldas"
 DESCRIPTION = "An Earth Observation Land Data Assimilation System (EO-LDAS)"
 LONG_DESCRIPTION = open('README.txt').read()
@@ -9,11 +8,11 @@ MAINTAINER = 'Jose Gomez-Dans/NCEO & University College London'
 MAINTAINER_EMAIL = "j.gomez-dans@ucl.ac.uk"
 URL = 'http://github.com/jgomezdans/eoldas'
 LICENSE = 'Undecided'
-VERSION = "1.0.1"
+VERSION = "1.0.5"
 DOWNLOAD_URL="https://github.com/jgomezdans/eoldas/zipball/master"
 
 setup(name='eoldas',
-      version=version,
+      version=VERSION,
       description=DESCRIPTION,
       long_description=LONG_DESCRIPTION,
       keywords='',
@@ -27,7 +26,7 @@ setup(name='eoldas',
       #packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=False,
-      #install_requires=[
+      install_requires=["SemiDiscrete>1.0.0"],
           # -*- Extra requirements: -*-
           # It require the RT codes, but the package names are still in flux
           #],
