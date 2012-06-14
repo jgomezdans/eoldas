@@ -45,5 +45,5 @@ setup(name='eoldas',
               'Operating System :: MacOS'
               ],
       
-        scripts=['scripts/eoldas.py'],
+        scripts=['scripts/eoldas_run.py'],
       )
