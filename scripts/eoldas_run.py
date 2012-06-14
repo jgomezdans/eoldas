@@ -4,9 +4,10 @@ import os
 import logging
 import numpy as np
 import pdb
-from eoldas_ParamStorage import ParamStorage
-from eoldas_Parser import Parser
-from eoldas_Solver import eoldas_Solver as Solver
+from eoldas import *
+from eoldas.eoldas_ParamStorage import ParamStorage
+from eoldas.eoldas_Parser import Parser
+from eoldas.eoldas_Solver import eoldas_Solver as Solver
 
 class eoldas(Parser):
     '''
@@ -61,7 +62,7 @@ class eoldas(Parser):
         
     '''
     def __init__(self,argv,name='eoldas',logger=None):
-        from eoldas_Lib import sortopt, sortlog
+        from eoldas.eoldas_Lib import sortopt, sortlog
 
         argv = argv or sys.argv
         here = os.getcwd()
