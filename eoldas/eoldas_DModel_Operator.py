@@ -390,6 +390,7 @@ class DModel_Operator ( Operator ):
 	(nobs,nstates,nobs,nstates)
 
 	'''
+	import pdb;pdb.set_trace()
 	x,Cx1,xshape,y,Cy1,yshape = self.getxy()
 	J,J_prime = self.J_prime() 
 	#`xshape = self.x.state.shape
