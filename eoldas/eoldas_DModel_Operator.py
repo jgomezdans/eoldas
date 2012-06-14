@@ -21,7 +21,8 @@ class DModel_Operator ( Operator ):
 	from eoldas_Lib import sortopt
         for i in np.array(self.options.datatypes).flatten():
             # mimic setting the apply_grid flag in options
-            self['%s_state'%i].options[i].apply_grid = True
+            if  self.dict().has_key('%s_state'%i):
+                self['%s_state'%i].options[i].apply_grid = True
         self.novar = sortopt(self,'novar',False)
         self.gamma_col = sortopt(self,'gamma_col',None)
 	self.beenHere =False
@@ -90,11 +91,28 @@ class DModel_Operator ( Operator ):
 	[operator.modelt.rt_model]
 	lag=1,2,3,4,5
 	lag_weight=1,0.7,0.5,0.35,0.2
+
+	NB this lag mechanism has not yet been fully tested
+        and should be used with caution. It is intended more
+	as a placeholder for future developments.
+
+	Finally, we can also decide to work with 
+	inverse gamma (i.e. an uncertainty-based measure)
+
+	This is achieved by setting the flag
+
+		operator.modelt.rt_model.inverse_gamma=True
+
+	This flag should be set if you intend to estimate gamma in the
+	Data Assimilation. Again, the is experimental and should be used
+	with caution.
  
         '''
         from eoldas_Lib import sortopt
         self.rt_model = sortopt(self.options,'rt_model',ParamStorage())
 	self.rt_model.lag = sortopt(self.rt_model,'lag',1)
+	self.rt_model.inverse_gamma= \
+		sortopt(self.rt_model,'inverse_gamma',False)
         self.rt_model.model_order = \
 			sortopt(self.rt_model,'model_order',1)
 	self.rt_model.wraparound = \
@@ -250,7 +268,7 @@ class DModel_Operator ( Operator ):
             self.linear.gamma_col = None
             self.linear.gamma_loc = 0
             locshape = (0)
-            gammas = x2[...,0]*1.+1.0
+            gammas = x2[...,0]*0.+1.0
         #if self.x_meta.is_grid:
             # the locational variable of interest is self.linear.gamma_loc
             # the grid is dimensioned e.g. [t,r,c,p]
@@ -281,7 +299,8 @@ class DModel_Operator ( Operator ):
             ww = np.where(slocations > 0)
 	    mod = int(self.rt_model.wraparound_mod) or slocations.shape[self.linear.gamma_loc]
             if self.rt_model.wraparound == 'reflexive':
-                slocations[ww] = -np.fmod(mod - slocations[ww],mod)
+                slocations[ww] = 0.
+                #slocations[ww] = -np.fmod(mod - slocations[ww],mod)
 	    elif self.rt_model.wraparound == 'periodic':
                 if self.rt_model.wraparound_mod == 0:
 	            slocations[ww] = slocations2[ww]
@@ -302,7 +321,7 @@ class DModel_Operator ( Operator ):
 	    ww2[self.linear.gamma_loc] = ww2[self.linear.gamma_loc] - lag
 	    ww2 = tuple(ww2)
 	    m[ww*2] = m[ww*2] - slocations[ww]
-   	    if self.rt_model.wraparound == 'reflexive':
+   	    if False and self.rt_model.wraparound == 'reflexive':
 		ww2 = np.abs(ww-lag)	
 	        # this is looped as there might be multiple elements with the	
 	        # same index for the reflecxive case
@@ -314,11 +333,22 @@ class DModel_Operator ( Operator ):
 		ww = tuple(ww)
 		ww2 = tuple(ww2)
 	   	m[ww2+ww] = m[ww2+ww] + slocations[ww]
+        # fix for edge conditions
+        dd = m.copy()
+        dd = dd.reshape(tuple([np.array(self.linear.x2shape).prod()])*2)
+        ddw = np.where(dd.diagonal() == 0)[0]
+        for d in (ddw):
+            ds = -dd[d,:].sum()
+            dd[d,:] += dd[d,:]
+            dd[d,d] = ds
+        m = dd.reshape(m.shape)
         self.logger.info('Caching model matrices...')
         # 
         if np.array(xshape).prod() == Cy1.size:
             self.linear.C1 = Cy1.reshape(xshape)[mask]\
                     .reshape( self.linear.x2shape )
+	elif xshape[1] == Cy1.size:
+            self.linear.C1 = np.tile(Cy1,xshape[0])[mask.flatten()].reshape( self.linear.x2shape )
         else:
             raise Exception("Can't deal with full covar matrix in DModel yet")
         nn = slocations.flatten().size
@@ -334,7 +364,9 @@ class DModel_Operator ( Operator ):
         '''
         A slightly modified J as its efficient to 
         precalculate things for this model
-        
+       
+	J = 0.5 * x.T D1.T gamma^2 D1 x
+ 
         '''
         x,Cx1,xshape,y,Cy1,yshape = self.getxy()
         self.Hsetup()
@@ -356,15 +388,20 @@ class DModel_Operator ( Operator ):
 	    self.novar = True
 	    self.Hsetup()
 	    return 0
+	
         x2 = x[self.linear.x2mask].reshape(self.linear.x2shape)
         J = 0.
         i = 0
+	if self.rt_model.inverse_gamma:
+	    tgamma = 1./gamma
+	else:
+	    tgamma = gamma    
         for count in xrange(self.x.state.shape[-1]):
             if count != self.linear.gamma_col:
                 C1 = np.diag(self.linear.C1[...,i].\
                              reshape(self.linear.D1.shape[0]))
                 x2a = x2[...,i].reshape(self.linear.D1.shape[0])
-                xg = np.matrix(x2a*gamma).T
+                xg = np.matrix(x2a*tgamma).T
                 dxg = self.linear.D1.T * xg
                 
                 J += np.array(0.5 * dxg.T * C1 * dxg)[0][0]
@@ -380,7 +417,7 @@ class DModel_Operator ( Operator ):
 	self.linear.D1 and self.gamma
 	after we call self.J_prime()
 
-	Here, J'' = D1.T gamma D1
+	Here, J'' = D1.T gamma^2 D1
 
 	J' is of shape (nobs,nstates)
 	which is the same as the shape of x
@@ -390,12 +427,9 @@ class DModel_Operator ( Operator ):
 	(nobs,nstates,nobs,nstates)
 
 	'''
-	import pdb;pdb.set_trace()
 	x,Cx1,xshape,y,Cy1,yshape = self.getxy()
 	J,J_prime = self.J_prime() 
-	#`xshape = self.x.state.shape
-        # 14 June 2012 : plewis got the wrng shape for some reason
-        xshape = self.linear.C1.shape
+	xshape = self.x.state.shape
 
 	if not 'linear' in self.dict():
 	    self.linear = ParamStorage()
@@ -407,25 +441,94 @@ class DModel_Operator ( Operator ):
 	# we need an indexing system in case of multiple
 	# nobs columns
         x2a = np.diag(np.ones(self.linear.x2shape[:-1]).flatten())
-	gamma = self.linear.gamma.flatten()
+	try:
+	    gamma = self.linear.gamma.flatten()
+	except:
+            if self.linear.gamma_col != None:
+                gamma = x.reshape(self.x.state.shape)\
+                    [...,self.linear.gamma_col].flatten()
+            else:
+                # no gamma variable, so use 1.0 
+                gamma = x.reshape(self.x.state.shape)\
+                    [...,0].flatten()*0.+1.
+            gamma = self.linear.gamma.flatten()
+        if self.rt_model.inverse_gamma:
+            tgamma = 1./gamma
+	    dg = 2./(gamma*gamma*gamma)
+        else:
+            tgamma = gamma
+	    dg = 1.0
         nshape = tuple([np.array(self.linear.x2shape[:-1]).prod()])
         D1 = np.matrix(self.linear.D1.reshape(nshape*2))
-	for i in xrange(xshape[-1]):
-            C1 = np.diag(self.linear.C1[...,i].\
+	i = 0
+        # so, e.g. we have xshape as (50, 100, 2)
+        # because one of those columns refers to the gamma value
+        # self.linear.gamma_col will typically be 0
+	for count in xrange(xshape[-1]):
+            if count != self.linear.gamma_col:
+                # we only want to process the non gamma col
+                C1 = np.diag(self.linear.C1[...,i].\
                              reshape(self.linear.D1.shape[0]))
-	    xg = np.matrix(x2a*gamma)
-	    dxg = D1 * xg
-	    deriv = np.array(dxg.T * C1 * D1)
-	    ww = np.where(deriv)
-	    ww2 = tuple(ww[:-1]) + tuple([ww[0]*0+i]) + tuple([ww[-1]] )+ tuple([ww[0]*0+i])
-	    self.linear.J_prime_prime[ww2] = deriv[ww]
-	return J,J_prime,self.linear.J_prime_prime
+	        xg = np.matrix(x2a*tgamma*tgamma)
+	        dxg = D1 * xg
+	        deriv = np.array(dxg.T * C1 * D1)
+                # so we have gamma^2 D^2 which is the Hessian
+                # we just have to put it in the right place now
+                # the technical issue is indexing an array of eg 
+                # (50, 100, 2, 50, 100, 2)
+                # but it might have more or fewer dimensions
+                nd = len(np.array(xshape)[:-1])
+                nshape = tuple(np.array(xshape)[:-1])
+                if nd == 1:
+                    self.linear.J_prime_prime[:,count,:,count] = deriv.reshape(nshape*2)
+                elif nd == 2:
+                    self.linear.J_prime_prime[:,:,count,:,:,count] = deriv.reshape(nshape*2)
+                elif nd == 3:
+                    self.linear.J_prime_prime[:,:,:,count,:,:,:,count] = deriv.reshape(nshape*2)
+                else:
+                    self.logger.error("Can't calculate Hessian for %d dimensions ... I can only do up to 3"%nd)
+ 
+	        #ww = np.where(deriv)
+	        #ww2 = tuple([ww[0]]) + tuple([ww[0]*0+count]) \
+		#		+ tuple([ww[1]] )+ tuple([ww[0]*0+count])
+                #x1 = deriv.shape[0]
+                #x2 = self.linear.J_prime_prime.shape[-1]
+                #xx = self.linear.J_prime_prime.copy()
+                #xx = xx.reshape(x1,x2,x1,x2)
+                #xx[ww2] = deriv[ww]
+	        #self.linear.J_prime_prime = xx.reshape(self.linear.J_prime_prime.shape)
+		i += 1
+        if self.linear.gamma_col != None:
+            c = self.linear.gamma_col
+            nd = len(np.array(xshape)[:-1])
+            nshape = tuple(np.array(xshape)[:-1])
+            deriv = np.diag(dg*2*J/(tgamma*tgamma)).reshape(nshape*2)
+            if nd == 1:
+                self.linear.J_prime_prime[:,c,:,c] = deriv
+            elif nd == 2:
+                self.linear.J_prime_prime[:,:,c,:,:,c] = deriv
+            elif nd == 3:
+                self.linear.J_prime_prime[:,:,:,c,:,:,:,c] = deriv
+            else:
+                self.logger.error("Can't calculate Hessian for %d dimensions ... I can only do up to 3"%nd)
+
+	    #dd = np.arange(nshape[0])
+            #x1 = dd.shape[0]
+            #x2 = self.linear.J_prime_prime.shape[-1]
+            #xx = self.linear.J_prime_prime.copy()
+            #xx = xx.reshape(x1,x2,x1,x2)
+            #xx[dd,dd*0+self.linear.gamma_col,\
+            #	dd,dd*0+self.linear.gamma_col] = dg*2*J/(tgamma*tgamma)
+            #self.linear.J_prime_prime = xx.reshape(self.linear.J_prime_prime.shape)
+	n = np.array(xshape).prod()
+	return J,J_prime,self.linear.J_prime_prime.reshape(n,n)
 
     def J_prime(self):
         '''
             A slightly modified J as its efficient to 
             precalculate things for this model
-            
+           
+	   J' = D.T gamma^2 D x 
             
         '''
         J = self.J()
@@ -440,7 +543,16 @@ class DModel_Operator ( Operator ):
             # no gamma variable, so use 1.0 
             gamma = x.reshape(self.x.state.shape)\
                 [...,0].flatten()*0.+1.
-        g2 = gamma * gamma
+        #gamma = self.linear.gamma.flatten()
+
+        if self.rt_model.inverse_gamma:
+            tgamma = 1./gamma
+            dg = -1./(gamma*gamma)
+        else:
+            tgamma = gamma
+            dg = 1.0
+
+        g2 = tgamma * tgamma
         xshape = self.x.state.shape
         J_prime = np.zeros((x.shape[0]/xshape[-1],xshape[-1]))
         D2x_sum = 0.
@@ -453,16 +565,16 @@ class DModel_Operator ( Operator ):
                 C1 = np.diag(self.linear.C1[...,i].\
                              reshape(self.linear.D1.shape[0]))
                 x2a = x2[...,i].reshape(self.linear.D1.shape[0])
-                xg = np.matrix(x2a*gamma).T
+                xg = np.matrix(x2a*tgamma).T
                 dxg = self.linear.D1 * xg
                 deriv = np.array(dxg.T * C1 * self.linear.D1)[0]
-                J_prime[...,count] = deriv * gamma
-                if self.linear.gamma_col != None:
-                        J_prime_gamma = deriv
-                        D2x_sum = D2x_sum + J_prime_gamma
+                J_prime[...,count] = deriv * tgamma
+                #if self.linear.gamma_col != None:
+                #        J_prime_gamma = deriv * x2a
+                #        D2x_sum = D2x_sum + J_prime_gamma
                 i += 1
         if self.linear.gamma_col != None:    
-            J_prime[...,self.linear.gamma_col] = D2x_sum
+            J_prime[...,self.linear.gamma_col] = dg*2*J/tgamma
         
         return J,J_prime
 

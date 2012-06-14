@@ -108,7 +108,6 @@ class Spectral ( ParamStorage ):
         else:
             self.logger.info("Starting new bandpass library")
             self.bandpass_library={}
-        
         if 'bandpass_libraries' in self.options.dict():    
             self.bandpass_libraries = self.options.bandpass_libraries
             for i in self.bandpass_libraries:
@@ -294,8 +293,8 @@ class Spectral ( ParamStorage ):
             self.nl     :   len(self.nlw)
             
         """
-        self.bandnames = bandnames
-        self.nbands = len(bandnames)
+        self.bandnames = np.atleast_1d(bandnames)
+        self.nbands = len(self.bandnames)
         try:
             if not 'bounds' in self.options.options.rt_model.dict().keys():
                 self.is_spectral = False
@@ -399,6 +398,7 @@ class Spectral ( ParamStorage ):
 	        self.bandpass_library[k] = v
             # normalise 
             self.bandpass_library[k] = v/v.sum()
+            v = self.bandpass_library[k]
             # find median 
             median = self.median(self.nlw,v)
             # specify the index of the median
@@ -443,8 +443,8 @@ class Spectral ( ParamStorage ):
             
             """
 	wavelengths = np.array(wavelengths)
-        bandmin = np.array(wavelengths - 0.5*bandwidth)
-        bandmax = np.array(wavelengths + 0.5*bandwidth)
+        bandmin = np.array(wavelengths - bandwidth)
+        bandmax = np.array(wavelengths + bandwidth)
 	if bandmin.size ==1 and bandmin < 0:
             bandmin = 0
 	elif bandmin.size >1:

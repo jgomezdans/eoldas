@@ -61,7 +61,7 @@ class eoldas_Solver(ParamStorage):
 			name=self.thisname,logdir=logdir,debug=True)
         n_configs = len(self.confs.infos)
         self.confs.root = []
-        
+        self.have_unc = False
         try:
             logdir = logdir
         except:
@@ -78,7 +78,7 @@ class eoldas_Solver(ParamStorage):
         general.is_spectral = sortopt(general,'is_spectral',True)
         if not general.is_spectral:
             sort_non_spectral_model(op,conf.operator,logger=confs.logger)
-            
+        general.init_test = sortopt(general,'init_test',False)    
         confs.logger.info('loading parameter state')
         conf.parameter.name = 'Operator'
         parameter = eval(op.name)(op,general,\
@@ -101,6 +101,7 @@ class eoldas_Solver(ParamStorage):
         operators = []
         for (opname,op) in conf.operator.dict().iteritems():
             if opname != 'helper':
+	        #pdb.set_trace()
                 exec('from eoldas_%s import %s'%(op.name,op.name))
                 # make sure the data limits and x bounds are the same 
                 # ... inherit from parameter
@@ -124,16 +125,22 @@ class eoldas_Solver(ParamStorage):
                     thisop.transform = parameter.options.x.names
                     thisop.invtransform = parameter.options.x.names
 		thisop.ploaderMask = np.in1d(parameter.x_meta.state,thisop.x_meta.state)
-		thisop.transform = np.array(thisop.transform[thisop.ploaderMask])
-		thisop.invtransform = np.array(thisop.invtransform[thisop.ploaderMask])
+		try:
+		    thisop.invtransform = np.array(thisop.invtransform[thisop.ploaderMask])
+		    thisop.transform = np.array(thisop.transform[thisop.ploaderMask])
+		except:
+		    ww = thisop.ploaderMask
+		    thisop.invtransform = np.array(thisop.transform)[ww]
+		    thisop.transform = np.array(thisop.transform)[ww]
         # sort the loaders
         parameter.operators = operators
         self.confs.root.append(parameter)
         # Now we have set up the operators
         # try out the cost function
-        self.logger.info('testing cost function calls')
-        J,J_prime = self.confs.root[0].cost()
-        self.logger.info('done')
+	if general.init_test:    
+            self.logger.info('testing cost function calls')
+            J,J_prime = self.confs.root[0].cost()
+            self.logger.info('done')
         self.confs.root = np.array(self.confs.root)
 
     def cost(self,xopt):
@@ -374,12 +381,10 @@ class eoldas_Solver(ParamStorage):
         '''
         if M:
             mask1 = self.mask1.flatten()
-            for i in xrange(self.nmask1):
-                count = 0
-                for j in xrange(len(mask1)):
-                    if mask1[j]:
-                        xstate[j,i] = xopt[count,i].flatten()
-                        count += 1
+	    count = 0
+            for i in np.where(mask1)[0]:
+	        xstate[i,mask1] = np.array(xopt[count]).flatten()
+                count += 1
             return
 
         xstate[self.mask1] = xopt[:self.nmask1].flatten()
@@ -391,12 +396,10 @@ class eoldas_Solver(ParamStorage):
         From xstate, load xopt, that being optimized
         '''
         if M:
-            mask1 = self.mask1.flatten()
-            n = self.nmask1
-            out = np.zeros((n,n))
-            for i in xrange(self.nmask1):
-                xs = xstate[...,i]
-                out[:,i]=xs[mask1].flatten()
+	    n = self.nmask1
+	    mask1 = np.matrix(self.mask1.flatten())
+	    MM = mask1.T * mask1
+	    out = xstate[MM].reshape(n,n)
             return out
                 
         xopt[:self.nmask1] = xstate[self.mask1].flatten()
@@ -419,7 +422,6 @@ class eoldas_Solver(ParamStorage):
             filename and format.
             
             '''
-	# 
         for this in self.Hx_ops:
             filename = this['filename']
             format = this['format']
@@ -431,44 +433,82 @@ class eoldas_Solver(ParamStorage):
 	    filenamey = filename+ '_orig'
             self.logger.info('Writing H(x) data to %s'%this['filename'])
             self.logger.info('Writing y data to %s'%filenamey)
+            try:
+		# dont stop just because it messes up plotting
+                op.plot(ploterr=self.have_unc)
+            except:
+                pass
+	    # write the observation data
+	    state.name.fmt = format
+	    state.write(filenamey,format)
+
+            # to write Hx data we have to mimic
+            # the y data 
             # first make a copy of the dataset
             self.datacopy = state.data.state.copy()
             self.sdcopy = state.data.sd.copy()
             self.C1copy = state.data.C1.copy()
-            self.fmtcopy = state.name.fmt
-            # now insert the Hx data
-            # write the data 
-            state.name.fmt = format
-            state.write(filenamey,format)
-            state.data.state = Hx.reshape(state.data.state.shape)
+
+	    # try fwdSd
             try:
-                state.data.sd = state.data.sd*0.
-                state.data.C1 = state.data.C1*0.
+                state.data.sd = op.fwdSd
+                state.data.C1 = op.fwdUncert
             except:
-                pass
+                state.data.sd = self.sdcopy*0.
+		state.data.C1 = self.C1copy*0
+
+	    # insert the Hx data
+	    # into state
+            state.data.state = Hx.reshape(state.data.state.shape)
+
+	    # write the file
             state.write(filename,format)
-        
+	    #then copy back the original data to tidy up
             state.data.state = self.datacopy.copy()
             state.data.sd = self.sdcopy.copy()
             state.data.C1 = self.C1copy.copy()
-            state.name.fmt = self.fmtcopy
+            #state.name.fmt = self.fmtcopy
 
     def uncertainty(self):
         '''
         Calculate the inverse Hessian of all operators
             
         '''
+        from sys import stderr
         J,J_prime,J_prime_prime = self.root.hessian()
         # reduce the rank 
         Hsmall = self.unloader(None,J_prime_prime,M=True)
+	self.have_unc = False
         try:
             IHsmall = np.matrix(Hsmall).I
+	    self.have_unc = True
+	    #U, ss, V = np.linalg.svd(Hsmall)
+	    #ww = np.where(ss>ss[0]*0.01)
+	    #sss = ss*0
+	    #sss[ww] = 1./ss[ww]
+	    #IHsmall = np.dot(U, np.dot(np.diag(sss), V))
         except:
             IHsmall = np.matrix(Hsmall)
+	J_prime_prime = J_prime_prime*0
         self.loader(IHsmall,J_prime_prime,M=True)
         self.Ihessian = J_prime_prime
-        self.root.x.sd = np.sqrt(np.array(self.Ihessian.diagonal()).flatten())
-            
+	self.IHsmall = IHsmall
+        dd = self.IHsmall.diagonal()
+  
+	#print >> stderr, "WARNING: ... something "
+	try:
+            self.root.x.sd = np.sqrt(np.array(self.Ihessian.diagonal()).flatten())
+	    self.root.Ihessian = self.Ihessian
+	    nfwd  = self.root.fwdError()
+	    # if this works you should get uncertainty if fwd modelling in 
+	    # op.fwdUncert for each operator self.operators
+	except:
+	    # then you have -ve values
+	    self.logger.error("WARNING: ill-conditioned system with unstable estimates of uncertainty")
+        for i,op in enumerate(self.root.operators):
+            # propagate the sd data down
+	    op.x.sd = self.root.x.sd.reshape(op.loaderMask.shape)[op.loaderMask]
+
     def write(self,filename=None,format=None):
         '''
         Writer function for the state variable
@@ -488,6 +528,14 @@ class eoldas_Solver(ParamStorage):
         filename = filename or self.result.filename
         format = format or self.result.format
         self.logger.info('writing results to %s'%filename)
+        try:
+	    np.savez(filename.replace('.dat','.npz'),Ihessian=self.Ihessian,IHsmall=self.IHsmall)
+        except:
+            pass
+        try:
+            self.root.plot(noy=True,ploterr=self.have_unc)
+        except:
+            pass
         self.root.x_state.write(filename,None,fmt=format)
 
 def tester():
@@ -563,7 +611,6 @@ def demonstration():
         # run the solver
         solver.solver()
         # Hessian
-	#pdb.set_trace()
         solver.uncertainty()
         # write out the state
         solver.write()

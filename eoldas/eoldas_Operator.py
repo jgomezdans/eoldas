@@ -137,7 +137,7 @@ class Operator ( ParamStorage ):
            name = type(self).__name__
            name =  "%s.%s" % (name,thistime)
         self.thisname = name
-
+       
         if type(datatype) != dict:
             # maybe its a list
             if type(datatype) == list:
@@ -187,7 +187,7 @@ class Operator ( ParamStorage ):
                     'names':['dummy']}
             # tt is what we will store it as e.g. x_state
             for (k,v) in this.iteritems():
-                kk = "%s%s"%(t,k)
+                #kk = "%s%s"%(t,k)
                 # if k exists in parameter, use that as v
                 if parameter != None and not t in parameter.dict() and\
                     k in parameter.options.dict():
@@ -246,12 +246,16 @@ class Operator ( ParamStorage ):
                     self[tt].options[t].apply_grid = True
                     State.regrid(self[tt])
                 has_state = True
-	   
+	  
+	    #if self[tt].Data.state == np.array(None):
+	    #    has_state = False
 	    if has_state: 
 	        self.options[t].sd = sortopt(self.options[t],'sd',np.zeros_like(self[tt].Data.state))
-                self[tt].Data.sd = sortopt(self[tt].Data,'sd',\
-                            np.array([float(v) for v in self.options[t].sd]))
-		
+		try:
+                    self[tt].Data.sd = sortopt(self[tt].Data,'sd',\
+                            np.array([float(v) for v in np.array(self.options[t].sd).flatten().tolist()]))
+		except:
+		    raise Exception('Error interpreting data for %s: problem reading or parsing'%self.thisname)
             self[tt].Name.is_grid = False
             if has_state and 'apply_grid' in self[tt].options[t].dict() and \
                 self[tt].options[t].apply_grid:
@@ -278,12 +282,20 @@ class Operator ( ParamStorage ):
                 sd[i] = float(v)
             self[tt].Data.sd = sd.reshape(shape)
             sd1 = np.array(self[tt].Data.sd)
-            
             if has_state and (not self[tt].Name.is_grid or from_parameter)\
                 and sd1.size != r.size:
                     # try to match up sd with data shape & size
                     if not self[tt].Name.is_grid:
-                        (n_samples,n_states) = r.shape
+                        try:
+                            (n_samples,n_states) = r.shape
+ 			except:
+			    if r.size == 0:
+				if 'logger' in self.dict():
+				    self.logger.error("no data points")
+				    import sys
+				    sys.exit(-1)
+			    n_samples = 1
+			    n_states  = r.size
                     else:
                         n_states = r.shape[-1]
                         n_samples = r.size/n_states
@@ -294,11 +306,15 @@ class Operator ( ParamStorage ):
                         n = r[:,0].size
                     if sd1.size == 1: 
                         self[tt].Data.sd = np.zeros_like(r) + sd1.flatten()[0]
+                    elif 'loaderMask' in self.dict() and self.loaderMask.shape == sd1.shape and sd1[self.loaderMask].size == r.size:
+		        self[tt].Data.sd = sd1[self.loaderMask].reshape(r.shape)
                     elif n != n_states:
                         if 'logger' in self.dict():
                             self.logger.info("Warning: some isses with state" + \
                                  " and sd data. They dont look the same size " +\
                                 "(%d vs %d) ... tiling accordingly"%(n,n_states))
+                        # have to be careful here
+                        # 
                         self[tt].Data.sd = \
                             np.tile(np.array(sd1),n_samples)\
                                 .reshape((n_samples,sd1.shape[0]))
@@ -328,7 +344,7 @@ class Operator ( ParamStorage ):
         else:
             self.linear.H = np.zeros(self.x.state.shape)
 
-	self.epsilon = sortopt(self.general,'epsilon',0.01)
+	self.epsilon = sortopt(self.general,'epsilon',1e-15)
 	# a hook to allow users not to have to write a whole new __init__
 	self.J_prime_approx = None
 	self.doPlot = sortopt(self.general,'doplot',False)
@@ -381,9 +397,9 @@ class Operator ( ParamStorage ):
             '''
         self.isLinear = True   
 	try:
-	    self.linear.H_prime = np.eye(self.y.state.shape[0])
+	    self.linear.H_prime = np.eye(self.y.state.size)
         except:
-	    self.linear.H_prime = np.eye(self.x.state.shape[0]) 
+	    self.linear.H_prime = np.eye(self.x.state.size) 
 
     def preload_prepare(self):
         '''
@@ -415,41 +431,49 @@ class Operator ( ParamStorage ):
             
             Here, we return a full matrix but that is not always needed
             as it can be large for large problems
+
+	    It may be called by J_prime_prime if there
+	    is no better way to calculate J_prime_prime
+
+	    If you want to circumvent 
             '''
 	if self.isLinear and 'H_prime' in self.linear.dict():
 	    return self.linear.H_prime
         xfull,Cx1,xshape,y,Cy1,yshape = self.getxy()
-        xshape = np.array(x.shape)
-        xnparam = x.size/xshape.prod()
-	ynparam = y.size/yshape.prod()
-        xx = x.reshape((xshape.prod(),xnparam))
-        out = np.zeros((np.array([xshape.prod(),xnparam,\
-                                  yshape.prod(),ynparam])))
-        bounds = self.options.x.bounds
-        self.Hx = self.linear.H
+	xshape=self.x.state.shape
+        xnparam = xshape[-1]
+	xloc = x.size/xnparam
+	try:
+	    nb = self.y.state.shape[-1]
+	except:
+	    nb = 1
+	# this is to represent the x state
+        xx = x.reshape((xloc,xnparam))
+	# this is the output:
+	# xloc x xnparam x nb
+        out = np.zeros((np.array([xloc,xnparam,xloc,nb])))
+	if self.isLinear:
+            self.Hx = self.linear.H
+        else:
+  	    self.Hx = self.H(x)
+	d = np.zeros((xloc,nb))
+	# we add delta over all locations at the 
+	# same time here
         for i in xrange(xnparam):
-            x1 = xx.copy()
-            delta = self.delta[:,i]
-            if delta != 0:
-                x1[:,i] += delta
-                ww = np.where(x1[:,i] > self.xmax[:,i])[0]
-                x1[ww,i] = xx[ww,i] - delta
-                H1x = self.H(x1.flatten())
-                d = (H1x - self.Hx).reshape((yshape.prod(),ynparam))/delta
-                d[ww,i] = -d[ww,i]
-                ww = np.where(d[:,i] != 0)[0]
-                for j in ww:
-                    out[j,i,j,i] = d[j,i]
-        self.linear.H_prime = out.reshape([xshape.prod()*xnparam,\
-                                           yshape.prod()*ynparam])
-        # check to see if we can simplfy
-        #if xshape.prod()*xnparam == yshape.prod()*ynparam:
-        #    dd = self.linear.H_prime.diagonal()
-        #    out = self.linear.H_prime.reshape(xshape.prod()*xnparam*\
-        #                                      yshape.prod()*ynparam)
-        #   if out.sum() == dd.sum():
-                # its diagonal
-        #        self.linear.H_prime = dd
+	    x1 = xx.copy()
+	    delta = self.delta[:,i].copy()
+	    d[:] = 0.
+            x1[:,i] = xx[:,i] + delta[:]
+            ww = np.where(x1[:,i] > self.xmax[:,i])[0]
+            x1[ww,i] = xx[ww,i] - delta[ww]
+	    ww = np.where(x1[:,i] < self.xmin[:,i])
+	    x1[ww,i] = self.xmin[ww,i]
+	    delta = (x1 -xx)[:,i]
+	    www = np.where(delta != 0)
+            H1x = self.H(x1.flatten())
+	    for j in xrange(nb):
+	        out[www,i,www,j] = (H1x - self.Hx)[www,j].flatten()/delta[www]
+        self.linear.H_prime = out.reshape([xnparam*xloc,xloc*nb])
         return self.linear.H_prime
     
     def unloader(self,smallx,fullx,all=False,sum=False,M=False):
@@ -465,7 +489,7 @@ class Operator ( ParamStorage ):
             is loaded.
             
             If M is True, then we are unloading a matrix
-            
+            which will normally be the hessian 
             '''
 	#if self.thisname == 'eoldas.solver.eoldas.solver-obs': # and self.x.state[0].sum() == 1:
         if 'loaderMask' in self.dict():
@@ -500,7 +524,7 @@ class Operator ( ParamStorage ):
                     # load the first one
                     smallx = stmp[self.xunlookup]
             # then load others
-            out[self.loaderMask] = smallx.flatten()
+            out[self.loaderMask] = np.array(smallx).flatten()
             return out
         raise Exception(\
                 'Illegal call to unloader before loader has been called')
@@ -513,13 +537,15 @@ class Operator ( ParamStorage ):
             This is done using a mask, in loader_prep which can be 
             used in reverse in the unloader. The mask is stored
             as self.loaderMask
-            
+           
             '''
 	from eoldas_Lib import isfloat
         if 'loaderMask' in self.dict():
             state = (fullx.x.state[self.loaderMask])\
                 .reshape(self.unloaderMaskShape)
+	    #self.unloaderMaskShape = self.loaderMask[self.loaderMask].shape
             if 'xlookup' in self.dict():
+                self.xlookup = np.atleast_1d(self.xlookup)
                 for i in xrange(len(self.xlookup)):
                     self.x.state[self.xlookup[i]] = state[i]
             else:
@@ -541,6 +567,7 @@ class Operator ( ParamStorage ):
         self.x_state.logger.info("loading to   %s"%str(to_names))
         to_loc = self.x_meta.location
         from_loc = fullx.x_meta.location
+        to_names = np.atleast_1d(to_names)
         n_param = len(to_names)
         # the loader mask is the size of the input data
         # 
@@ -553,6 +580,8 @@ class Operator ( ParamStorage ):
             return False
         if self.x_meta.is_grid and fullx.x_meta.is_grid:
             # a straight load but may be different parameters
+            self.x_meta.state = np.atleast_1d(self.x_meta.state)
+            fullx.x_meta.state = np.atleast_1d(fullx.x_meta.state)
             if np.in1d(self.x_meta.state,fullx.x_meta.state).all() and \
                 len(self.x_meta.state) == len(fullx.x_meta.state):
                 self.x.state = fullx.x.state
@@ -582,6 +611,7 @@ class Operator ( ParamStorage ):
             # we only want to load those samples where
             # location matches
             # now set to_loc to the actual location data
+            from_loc = np.atleast_1d(from_loc)
             nd = len(from_loc)
             # we need to get the qlocation info from somewhere
             if not 'qlocation' in self.x and \
@@ -591,8 +621,37 @@ class Operator ( ParamStorage ):
                         self.x[i] = self.y[i]
                         self.x_meta[i] = self.y_meta[i]
                 except:
-                    self.logger.error('Illegal x state definition')
-                    raise Exception('Illegal x state definition')
+                    self.logger.info('incomplete x state definition .. a prior? copying from parameter')
+		    self.x.qlocation = fullx.x_state.ungridder.qlocation.copy()
+		    self.x.location = fullx.x_state.ungridder.location.copy()
+		    # so probably need to fix y
+		    for i in ['qlocation','location']:
+			self.x_meta[i] = fullx.x_meta[i]
+	    try:
+	        for i in ['qlocation','location']:
+		    self.y_meta[i] = self.x_meta[i]
+		    self.y[i] = self.x[i]
+	 	if self.y.state.size == self.y_meta.state.size:
+		    # then we have only a partial load of y state
+		    # probably because we had no location info before
+		    nloc = self.x.location.shape[0]
+		    self.y.state = np.tile(self.y.state,nloc).reshape(nloc,self.y_meta.state.size)
+		
+                if self.y.sd.size == self.y_meta.state.size:
+                    # then we have only a partial load of y state
+                    # probably because we had no location info before
+                    nloc = self.x.location.shape[0]
+                    self.y.sd = np.tile(self.y.sd,nloc).reshape(nloc,self.y_meta.state.size)
+		if self.y.C1.size == self.y_meta.state.size:
+		   # then we have only a partial load of y state
+                    # probably because we had no location info before
+                    nloc = self.x.location.shape[0]
+                    self.y.C1 = np.tile(self.y.C1,nloc).reshape(nloc,self.y_meta.state.size)
+  	
+	    except:
+		pass 
+		    #self.x_meta. fullx.x_meta
+                    #raise Exception('Illegal x state definition')
             
             try:
                 to_loc = self.x.qlocation
@@ -607,12 +666,14 @@ class Operator ( ParamStorage ):
             except:
                 # x state is not yet set, so we must work out itsd
                 # shape by other means
+                self.x.qlocation = np.atleast_1d(self.x.qlocation)
                 self.unloaderMaskShape = (len(self.x.qlocation)\
-                                          ,len(self.x_meta.state))
+                                          ,self.x_meta.state.size)
                 self.x.state = np.zeros(self.unloaderMaskShape)
             
             mask = np.zeros_like(self.x.state).astype(bool)
             self.x.fullstate = self.x.state
+            to_loc = np.atleast_1d(to_loc)
             for i in xrange(len(to_loc)):
                 for j in xrange(n_param):
                     n = np.where(to_names[j] == from_names)[0][0]
@@ -643,7 +704,8 @@ class Operator ( ParamStorage ):
             # each, but more generally they will have
             # multiple y terms
             xlookup = [[] for i in xrange((m.size/self.x.location.shape[1]))]
-            for i in xrange(len(xlookup)):
+            
+            for i in xrange(len(np.atleast_1d(xlookup))):
                 thisloc = str(qlocation[i,:])
                 for j in np.where(self.x.qlocation[:,0] \
                                   == qlocation[i,0])[0]:
@@ -656,14 +718,14 @@ class Operator ( ParamStorage ):
             # for each location
             self.xunlookup = np.array([i[0] for i in self.xlookup])
             # now expand state to self.x.state
-            for i in xrange(len(self.xlookup)):
+            for i in xrange(len(np.atleast_1d(self.xlookup))):
                 self.xlookup[i] = np.array(self.xlookup[i])
                 self.x.state[self.xlookup[i]] = state[i]
             self.unloaderMaskShape = state.shape
 
         # make sure we store some bounds info in a convenient manner
         # required eg for finite differerence approximations
-        self.epsilon = sortopt(self.general,'epsilon',1e-5)
+        self.epsilon = sortopt(self.general,'epsilon',1e-15)
         try:
             bounds = self.x_meta.bounds
         except:
@@ -680,6 +742,7 @@ class Operator ( ParamStorage ):
 	else:
 	    self.logger.debug('Coming from a non gridded dataset to a non gridded dataset')
 	    # it should be an int or float
+            to_loc = np.atleast_1d(to_loc)
 	    ww = to_loc[0]
 	    try:
 	        ok,dummy = isfloat(ww)
@@ -742,14 +805,15 @@ class Operator ( ParamStorage ):
         return None   
 
     def getxy(self,diag=False):
-        
+
         xshape = self.x.state.shape
         x = self.x.state.astype(float).flatten()
         if 'x' in self.dict():
-            Cx1 = self.x.C1.astype(float)
+	    # we mean sd here even though its called Cx1
+            Cx1 = self.x.sd.astype(float)
         else:
             Cx1 = 0.*x
-          
+      
         if 'y' in self.dict():
             y = self.y.state.astype(float).flatten()
             yshape = self.y.state.shape
@@ -762,12 +826,13 @@ class Operator ( ParamStorage ):
 	    # if diag flag is set, return sd, not C^-1
             try:
 	    	Cx1 = np.diag(Cx1)
-	    	Cx1 = 1./np.sqrt(Cx1)
+	    	#Cx1 = 1./np.sqrt(Cx1)
 	    except:
 	    	pass
 	    try:
             	Cy1 = np.diag(Cy1)
-            	Cy1 = 1./np.sqrt(Cy1)
+	        ww = np.where(Cy1)
+            	Cy1[ww] = 1./np.sqrt(Cy1[ww])
             except:
             	pass
 	    if Cx1.size < x.size:
@@ -905,7 +970,9 @@ class Operator ( ParamStorage ):
 	    return
         x1,Cx1,xshape,y,Cy1,yshape = self.getxy(diag=True)
         # try various places to bet bounds info
-	
+        have_y = noy
+	if ploterr:
+            self.logger.info("plotting uncertainty info")
         try:
             x_min = self.xmin[0]
             x_max = self.xmax[0]
@@ -926,19 +993,48 @@ class Operator ( ParamStorage ):
         lim = (ll,lu)
 	# are any transforms required ?
 	x = self.invtrans(x1.reshape(xshape),lim=lim).flatten()
+	
 	if ploterr:
-            dx1 = self.invtrans((x1+Cx1*1.96).reshape(xshape),lim=lim) 
-	    dx2 = self.invtrans((x1-Cx1*1.96).reshape(xshape),lim=lim)
+	    try:
+	        Cx1a = np.array(np.matrix(Cx1).diagonal()).flatten().reshape(xshape)
+	    except:
+                Cx1a = Cx1.reshape(xshape)
+            try:
+                Cy1a = np.array(np.matrix(Cy1).diagonal()).flatten().reshape(yshape)
+            except:
+	        try:
+                    Cy1a = Cy1.reshape(yshape)
+		except:
+		    Cy1a = np.array(list(Cy1)*np.array(yshape)[...,-1])
+	    try:
+                dx1 = self.invtrans((x1+Cx1a.reshape(x1.shape)*1.96).reshape(xshape),lim=lim) 
+	        dx2 = self.invtrans((x1-Cx1a.reshape(x1.shape)*1.96).reshape(xshape),lim=lim)
+	    except:
+	        dx1 = dx2 = x1*0.
 	    # dx1 should be upper bound of x
             tmp = dx1.copy()
 	    ww = np.where(dx2 > dx1)
 	    tmp[ww] = dx2[ww]
 	    dx2[ww] = dx1[ww]
 	    dx1 = tmp
-	    dx1 = (dx1).reshape(xshape)
-	    dx2 = (dx2).reshape(xshape)
-	    dy1 = (y + Cy1*1.96).reshape(yshape)
-            dy2 = (y - Cy1*1.96).reshape(yshape)
+	    ddx1 = dx1 - x.reshape(dx1.shape)
+	    ddx2 = x.reshape(dx1.shape) - dx2
+	    have_y = True
+	    try:
+	    # we dont have y error yet
+    	        dy1 = self.y.state + self.y.sd*1.96 #(y + Cy1a.reshape(y.shape)*1.96).reshape(yshape)*0
+                dy2 = self.y.state - self.y.sd*1.96  #(y - Cy1a.reshape(y.shape)*1.96).reshape(yshape)*0
+		ddy2 = ddy1 = self.y.sd*1.96 
+		try:
+		    fddy2 = fddy1 = self.fwdSd*1.96
+		except:
+		    fddy2 = fddy1 = 0
+	    except:
+		have_y = False
+	        dy1 = 0.
+		dy2 = 0.
+		ddy2 = ddy1 = 0.
+		fddy2 = fddy1 = 0
 	self.logger.info('starting plots ...')
 	pylab.rcParams.update(\
 		{'axes.labelsize':5,\
@@ -1003,26 +1099,24 @@ class Operator ( ParamStorage ):
 	    ax2.set_ylabel(self.x_meta.state[i],**yprops)
 	    # some transform bug in plotting error bars 
 	    # leave for now
-	    if isgrid or True or x.shape[0] > 100:
+	    if not have_y  and (True or isgrid or True): # or x.shape[0] > 100:
+		location = location.flatten()
                	try:
 		    if ploterr:
 		        ax.fill_between(location,y1=dx2[:,i],y2=dx1[:,i],facecolor='0.8')
                     ax.plot(location,x[:,i],'r')
 	        except:
-		    xx = np.arange(xshape[:-1]).flatten()
+		    xx = np.arange(tuple(np.array(xshape)[:-1])).flatten()
 		    if ploterr:
 		        ax.fill_between(xx,y1=dx2[:,i],y2=dx1[:,i],facecolor='0.8')
 	            ax.plot(xx,x[:,i],'r')
 	    else:
-	 	if ploterr:
-		    dx1 = dx1 - x
-		    dx2 = x - dx2
 		try:
 		    if ploterr:
-		        ax.errorbar(location, x[:,i], yerr=[dx2[:,i],dx1[:,i]], fmt='ro')
+		        ax.errorbar(location, x[:,i], yerr=[ddx2[:,i],ddx1[:,i]], fmt='ro')
                     ax.plot(location,x[:,i],'ro')
                 except:
-		    xx = np.arange(xshape[:-1]).flatten()
+		    xx = np.arange(tuple(np.array(xshape)[:-1])).flatten()
 		    if ploterr:
                         ax.errorbar(xx,x[:,i], yerr=[dx2[:,i],dx1[:,i]], fmt='ro')
 		    ax.plot(xx,x[:,i],'ro')
@@ -1038,6 +1132,8 @@ class Operator ( ParamStorage ):
 	        ax.set_xlabel(label)
 	    else:
 		ax.set_xticklabels([])
+	    ax2.set_yticks(ax.get_yticks())
+	    ax2.set_yticklabels([])
 	    #for lab in ax.get_xticklabels():
 	    #    lab.set_rotation(0)
 	    #ax.set_ylim(ax2.get_ylim())
@@ -1078,19 +1174,21 @@ class Operator ( ParamStorage ):
             mask = self.y.control[:,self.y_meta.control=='mask'].flatten()
         except:
             mask = np.ones(yshape[0])
+        mask = np.atleast_1d(mask)
 	if len(mask) < yshape[0]:
 	    mask = np.ones(yshape[0])
 	# a spectral plot
+        #if ploterr:
 	for i in xrange(yshape[1]):
 	    axisNum += 1
-	    ymax1 = np.max(y[:,i])
-	    ymax2 = np.max(Hx[:,i])
+	    ymax1 = np.max(y)
+	    ymax2 = np.max(Hx)
 	    ax = pylab.subplot(nn1,nn2, axisNum)
 	    #ax.set_ylim(0.,np.max([ymax1,ymax2]))
-            try:
-                ax.set_xlim(np.min(location),np.max(location))
-            except:
-                pass
+            #try:
+            #    ax.set_xlim(np.min(location),np.max(location))
+            #except:
+            #    pass
 
             ax2 = ax.twinx()
             yprops = dict(rotation=90,\
@@ -1100,31 +1198,58 @@ class Operator ( ParamStorage ):
 
             # some transform bug in plotting error bars 
             # leave for now
-            if isgrid or True or y.shape[0] > 100:
+            if isgrid or y.shape[0] > 100:
                 try:
-                    if ploterr:
+                    if False and ploterr:
                         ax.fill_between(location,y1=dy2[:,i],y2=dy1[:,i],facecolor='0.8')
                     ax.plot(location,Hx[:,i],'r')
                     ax.plot(location,y[:,i],'g,')
                 except:
-                    xx = np.arange(yshape[:-1]).flatten()
-                    if ploterr:
-                        ax.fill_between(xx,y1=dy2[:,i],y2=dy1[:,i],facecolor='0.8')
+		    try:
+			xx = location
+                    except:
+			xx = np.arange(np.array(yshape)[:-1]).flatten()
+                    if False and ploterr:
+			try:
+                            ax.fill_between(xx,y1=dy2[:,i],y2=dy1[:,i],facecolor='0.8')
+			except:
+			    ax.fill_between(xx,y1=dy2,y2=dy1,facecolor='0.8')
                     ax.plot(xx,Hx[:,i],'r')
-                    ax.plot(xx,y[:,i],'g.')
+                    ax.plot(xx,Hx[:,i],'ro')
+                    if ploterr:
+                        ax.errorbar(xx,y[:,i],yerr=ddy2[:,i], fmt='go')
+                    ax.plot(xx,y[:,i],'go')
             else:
-                if ploterr:
-                    dy1 = dy1 - y
-                    dy2 = y - dy2
                 try:
                     if ploterr:
-                        ax.errorbar(location, y[:,i], yerr=[dy2[:,i],dy1[:,i]], fmt='ro')
-                    ax.plot(location,Hx[:,i],'r')
-                    ax.plot(location,y[:,i],'g.')
+                        ax.errorbar(location, y[:,i], yerr=[ddy2[:,i],ddy1[:,i]], fmt='go')
+                    try:
+                        if (Hx == x):
+                            if ploterr:
+                                ax.errorbar(location, Hx[:,i], yerr=[ddx2[:,i],ddx1[:,i]], fmt='ro')
+                            else:
+                                ax.plot(location,Hx[:,i],'ro')
+                        else:
+                            ax.plot(location,Hx[:,i],'ro')
+                        ax.plot(location,y[:,i],'go')
+
+                    except:
+		        if (Hx == x).all():
+			    if ploterr:
+			        ax.errorbar(location, Hx[:,i], yerr=[ddx2[:,i],ddx1[:,i]], fmt='ro')
+			    else:
+			        ax.plot(location,Hx[:,i],'ro')
+		        else:
+			    ax.plot(location,Hx[:,i],'ro')
+		        ax.plot(location,y[:,i],'go')
                 except:
-                    xx = np.arange(yshape[:-1]).flatten()
+		    try:
+                        xx = location
+                    except:
+                        xx = np.arange(np.array(yshape)[:-1]).flatten()
+
                     if ploterr:
-                        ax.errorbar(xx,y[:,i], yerr=[dy2[:,i],dy1[:,i]], fmt='ro')
+                        ax.errorbar(xx,y[:,i], yerr=[ddy2[:,i],ddy1[:,i]], fmt='ro')
                     ax.plot(xx,Hx[:,i],'r')
                     ax.plot(xx,y[:,i],'g.')
             #ax2 = ax.twinx()
@@ -1132,7 +1257,7 @@ class Operator ( ParamStorage ):
             #ax2.set_yticks(ax.get_yticks())
             ax.yaxis.set_major_locator(pylab.MaxNLocator(3))
             #ax2.yaxis.set_major_locator(pylab.MaxNLocator(2))
-            #ax.set_yticklabels([])
+            ax2.set_yticklabels([])
             pylab.xticks()
             ax.xaxis.set_major_locator(pylab.MaxNLocator(9))
             if i == xshape[-1]-1:
@@ -1167,7 +1292,21 @@ class Operator ( ParamStorage ):
                 except:
                     wl = np.arange(yshape[1])
                 pylab.plot(wl,y[i])
+		if ploterr:
+		    try:
+                        ax.errorbar(wl,y[i], yerr=[ddy2[i],ddy1[i]], fmt='ro')
+		    except:
+		        pass
                 pylab.plot(wl,Hx[i],'g^')
+		if ploterr:
+                    try:
+                        ax.errorbar(wl,Hx[i], yerr=[fddy2[i],fddy1[i]], fmt='g^')
+                    except:
+                        pass
+                #try:
+		##    if (Hx == x).all():
+                #        if ploterr:
+                #            ax.errorbar(wl, Hx[i], yerr=[ddx2[:,i],ddx1[:,i]], fmt='ro')
                 pylab.yticks()
                 ax.yaxis.set_major_locator(pylab.MaxNLocator(3))
                 if not (axisNum-1)%nn2 == 0:
@@ -1225,7 +1364,6 @@ class Operator ( ParamStorage ):
             op.x_state.logger.info("J = %f"%Jtmp)
         #op.x_state.logger.info("J' = %s"%str(\
         #        J_prime[tuple(np.array(J_prime_tmp.shape[:-1])*0)]))
-        
         for i,op in enumerate(self.operators):
             # load from self.x.state, the *full* representation
             # into that required by this operator
@@ -1245,8 +1383,71 @@ class Operator ( ParamStorage ):
                 J += Jtmp
                 J_prime += J_prime_tmp
                 J_prime_prime += J_prime_prime_tmp
+        # fwd uncertainty
+        # = H_prime.T * J_prime_prime * H_prime
         #self.memory()
         return J,J_prime.flatten(),J_prime_prime
+
+    def fwdError(self):
+        '''
+	    Calculate the fwd modelling uncertainty for all operators
+
+	   This assumes that self.Ihessian has been calculated
+
+	   For each operator then, op.fwdUncert = H_prime.T self.Ihessian H_prime
+
+        '''
+        if not 'Ihessian' in self.dict():
+	    self.x_state.logger.error('Cannot call fwdError if Ihessian has not been calculated')
+            return 0
+        self.x_state.logger.info('Calculating Fwd Model error')
+	n = 0
+        if not 'operators' in self.dict():
+            op = self
+            op.loader(self)
+            try:
+		Ihessian = self.Ihessian
+                x,Cx1,xshape,y,Cy1,yshape = self.getxy()
+                J,J_prime0 = self.J_prime()
+                H_prime = self.H_prime(x)
+		op.fwdUncert = H_prime.T * Ihessian * H_prime
+	        n = n + 1
+	    except:
+		pass
+        for i,op in enumerate(self.operators):
+            # load from self.x.state, the *full* representation
+            # into that required by this operator
+            op.loader(self)
+	    try:
+		mask = (op.loaderMask.T * op.loaderMask)
+		x,Cx1,xshape,y,Cy1,yshape = op.getxy()
+		Ihessian = self.Ihessian[mask]
+		nn = np.sqrt(Ihessian.size).astype(int)
+		Ihessian = Ihessian.reshape((nn,nn))
+                J,J_prime0 = op.J_prime()
+                H_prime = op.H_prime(x)
+		# but Ihessian only has one entry for each (time/space) sample
+                # and here we need a version of this that is expanded
+                op.xlookup = np.atleast_1d(op.xlookup)
+                nsamples = len(op.xlookup)
+                ntotal = np.array(op.xlookup).size
+		if  nsamples != ntotal:
+		    # need to expand
+		    nn = H_prime.shape[0]
+		    Ihessian2 = np.zeros((nn,nn))
+		    count = 0
+		    nparams = xshape[-1]
+		    for j in xrange(len(op.xlookup)):
+			for k in xrange(len(op.xlookup[j])):
+			   Ihessian2[count*nparams:(count+1)*nparams,count*nparams:(count+1)*nparams] = Ihessian[j*nparams:(j+1)*nparams,j*nparams:(j+1)*nparams]
+			   count = count + 1
+		    Ihessian = Ihessian2
+                op.fwdUncert = np.matrix(H_prime).T * np.matrix(Ihessian) *  np.matrix(H_prime)
+		op.fwdSd = np.array(np.sqrt(op.fwdUncert.diagonal())).reshape(yshape)
+	        n = n + 1
+	    except:
+		pass
+	return n
 
     def J ( self ):
         """
@@ -1493,6 +1694,7 @@ def tester(plot=True):
     '''
     print 'Expectation:'
     print Expectation
+    solver.confs.infos = np.atleast_1d(solver.confs.infos)
     for i in xrange(len(solver.confs.infos)):
         solver.prep(i)
         xopt = np.zeros(solver.nmask1+solver.nmask2)
@@ -1531,7 +1733,7 @@ def tester(plot=True):
             J_prime_approxall += J_prime_tmp
             J_prime_approx = J_prime_approx.flatten()
             
-            d = (J_prime - J_prime_approx)
+            d = np.atleast_1d(J_prime - J_prime_approx)
             n = float(len(d))
             op.logger.info('J_prime        Range: [%.6f:%.6f]'\
                            %(np.min(J_prime),np.max(J_prime)))

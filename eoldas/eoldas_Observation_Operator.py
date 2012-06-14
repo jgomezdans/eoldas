@@ -139,20 +139,27 @@ class Observation_Operator ( Operator ):
 	'''
 	x,Cx1,xshape,y,Cy1,yshape = self.getxy()
 	J,J_prime0 = self.J_prime()
-	xshape = self.x.state.shape
-        if not 'linear' in self.dict():
-            self.linear = ParamStorage()
-        if not 'J_prime_prime' in self.linear.dict():
-            self.linear.J_prime_prime = \
-                np.zeros(xshape*2)
-        else:
-            self.linear.J_prime_prime[:] = 0
+	#pdb.set_trace()
+	# switch this off tmp if its on
+	isLinear = self.isLinear
+        self.isLinear = False
+	# numerical calculations of H_prime
+	# unsetting isLinear forces a calculation
+	# at this x
+	nparam = self.x.state.shape[-1]
+	nb = self.y.state.shape[-1]
+	ns = self.x.state.size / nparam
+	#pdb.set_trace()
+        H_prime = self.H_prime(x) #.reshape(nparam*ns,nb)
 
-	for i in xrange(xshape[-1]):
-	    ww = np.where(deriv)
-	    ww2 = tuple(ww[:-1]) + tuple([ww[0]*0+i]) + tuple([ww[-1]] )+ tuple([ww[0]*0+i])
-	    self.linear.J_prime_prime[ww2] = deriv[ww]
-	return J,J_prime,J_prime_prime	
+	# H_prime is dimensioned (yshape.prod(),ynparam)
+        M = np.matrix(H_prime)
+	C = np.matrix(np.diag(Cy1))
+#	JPP = M.T * C * M
+	JPP = M * C * M.T
+	# this should be of dimension nparam*ns ^2
+	self.isLinear = isLinear
+	return J,J_prime0,JPP
 
     def J_prime_full( self):
 	'''
@@ -354,7 +361,7 @@ class Observation_Operator ( Operator ):
             
         """
         
-    def hessian(self,use_median=True,epsilon=1.e-5,linear_approx=False):
+    def hessian(self,use_median=True,epsilon=1.e-15,linear_approx=False):
         """
             observation operator hessian
             """

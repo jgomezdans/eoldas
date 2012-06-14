@@ -158,19 +158,32 @@ def reader(self,filename,dataset,fmt=None,info=[]):
 	self.logger.warning("Will try to interpret as flat ASCII file")
         stuff,is_error = try_read(self,this,filename,dataset,info=info)
 	# check teh sanity of the read
-	nstates = len(self.name.state)
-	if self.data.state.shape[1] != nstates:
-	    self.logger.warning("*****************************************")
-	    self.logger.warning("MAJOR WARNING")
-            self.logger.warning("*****************************************")
-	    self.logger.warning("Inconsistency found in data read")
-	    self.logger.warning("You requested %s"%str(self.name.state))
-	    self.logger.warning("but we find %d columns of data"%self.data.state.shape[1])
-	    self.logger.warning("We will guess that last columns are the one wanted")
-	    self.logger.warning("but this may noy work")
-	    self.logger.warning("You should check the state names in the config file")
-	    self.logger.warning("and compare that with what you have in the datafile")
-	    self.data.state = self.data.state[:,-nstates]
+        err = False
+        try:
+	    nstates = len(np.atleast_1d(self.name.state))
+        except:
+            nstates = 1
+            err = True
+        try:
+	    if self.data.state.shape[1] != nstates:
+                err = True
+        except:
+            err = True
+        if err:
+            try: 
+	        self.logger.warning("*****************************************")
+	        self.logger.warning("MAJOR WARNING")
+                self.logger.warning("*****************************************")
+    	        self.logger.warning("Inconsistency found in data read")
+	        self.logger.warning("You requested %s"%str(self.name.state))
+	        self.logger.warning("but we find %d columns of data"%self.data.state.shape[1])
+	        self.logger.warning("We will guess that last columns are the one wanted")
+	        self.logger.warning("but this may not work")
+	        self.logger.warning("You should check the state names in the config file")
+	        self.logger.warning("and compare that with what you have in the datafile")
+	        self.data.state = self.data.state[:,-nstates]
+            except:
+                self.logger.warning("error logging warning message")
         if not is_error[0]:
             return stuff,(False,"")
     return stuff,(True,"Exhausted formats for file %s"%(filename))
@@ -255,7 +268,7 @@ def read_numpy_fromfile(self,goodfile,dataset,info=None):
     '''
     #self.store_header = goodfile.open().readline().close()
     this = np.genfromtxt(goodfile,skip_header=1)
-    l = len(this.shape)
+    l = len(np.atleast_1d(this).shape)
     if this.size > 0:
         retval = ParamStorage()
         retval.name = ParamStorage()
@@ -347,11 +360,11 @@ def read_numpy(self,filename,name,info=[]):
     datasets = []
     alt_datasets = []
     alt_names = names
-    for i in xrange(len(contents)):
+    for i in xrange(len(np.atleast_1d(contents))):
         if contents[i] in names:
             datasets.append(i)
     
-    if not len(datasets):
+    if not len(np.atleast_1d(datasets)):
         if 'logger' in self or 'logger' in self.dict():
             self.logger.error(\
                           "None of requested datasets %s found in %s ..." \
@@ -360,10 +373,10 @@ def read_numpy(self,filename,name,info=[]):
                           %(str(contents)))
         names = def_names
         alt_names = def_alt_names
-        for i in xrange(len(contents)):
+        for i in xrange(len(np.atleast_1d(contents))):
             if contents[i] in names:
                 datasets.append(i)
-        if not len(datasets):
+        if not len(np.atleast_1d(datasets)):
             self.error_msg = "None of requested datasets %s found in %s"\
                 %(str(names),filename) + ' ' + \
                 "... trying default MODIS names: only %s"\
@@ -418,16 +431,16 @@ def read_numpy(self,filename,name,info=[]):
         thisshape = vza.shape
         starter = {'time':np.min(doy),'row':0,'col':0}
         delta = {'time':1,'row':1,'col':1}
-        if len(limits) <3:
+        if len(np.atleast_1d(limits)) <3:
             from eoldas_Lib import set_default_limits
             old_loc = location
             location = np.array(['time','row','col'])
             lim2 = set_default_limits(location)
-            for i in xrange(len(limits)):
+            for i in xrange(len(np.atleast_1d(limits))):
                 ww = np.where(old_loc[i] == location)[0]
                 lim2[ww] = list(limits[i])
             limits = lim2
-        for i in xrange(len(limits)):
+        for i in xrange(len(np.atleast_1d(limits))):
             if limits[i][0] == None:
                 limits[i][0] = starter[location[i]]
             if limits[i][1] == None:
@@ -451,7 +464,7 @@ def read_numpy(self,filename,name,info=[]):
         sza = sza[gooddays,start_row:end_row+1,start_col:end_col+1]*0.01
         raa = raa[gooddays,start_row:end_row+1,start_col:end_col+1]*0.01
         yy = []
-        for i in xrange(len(this_name)):
+        for i in xrange(len(np.atleast_1d(this_name))):
             this = y[i]
             yy.append(this[gooddays,start_row:end_row+1,\
                            start_col:end_col+1]*0.0001)
@@ -459,11 +472,11 @@ def read_numpy(self,filename,name,info=[]):
         # now do QA
         mask = np.zeros_like(qa).astype(bool)
         # loop over qa
-        for j in xrange(len(QA_OK)):
+        for j in xrange(len(np.atleast_1d(QA_OK))):
             ww = np.where(qa==QA_OK[j])
             mask[ww] = True
         # better look over data to check valid
-        for j in xrange(len(yy)):
+        for j in xrange(len(np.atleast_1d(yy))):
             ww = np.where(yy[j] < 0)
             mask[ww] = False
         ww = np.where(mask)
@@ -477,14 +490,14 @@ def read_numpy(self,filename,name,info=[]):
         row = ww[1]+start_row
         col = ww[2]+start_col
 	locations  = np.array([doy,row,col])
-	nnn = len(locations[0])
+	nnn = len(np.atleast_1d(locations[0]))
         orig = np.repeat(np.array([start_doy,start_row,start_col]),locations.shape[1]).reshape(locations.shape).T
         div = np.repeat(np.array([step_doy,step_row,step_col]),locations.shape[1]).reshape(locations.shape).T
         qlocations = ((locations.T - orig)/div.astype(float)).astype(int).T
         controls = np.array([np.ones_like(doy).astype(bool),\
                              vza,raa,sza,0*doy])
         y = []
-        for i in xrange(len(this_name)):
+        for i in xrange(len(np.atleast_1d(this_name))):
             this = yy[i]
             y.append(this[ww])
         grid = np.array(y)   
@@ -498,7 +511,7 @@ def read_numpy(self,filename,name,info=[]):
                               " I wouldn;t try to do anything with it")
         # in case we dont have data for all bands
         mask =  np.logical_or.reduce([[this_name[i]==x for x in names] \
-                                      for i in xrange(len(this_name))])
+                                      for i in xrange(len(np.atleast_1d(this_name)))])
         sd = np.array('0.004 0.015 0.003 0.004 0.013 0.01 0.006'\
                       .split())[mask]
         sd = np.array([float(i) for i in sd.flatten()])\
@@ -510,10 +523,10 @@ def read_numpy(self,filename,name,info=[]):
         datasets.name  = ParamStorage()
         datasets.name.fmt = fmt
         grid = grid.T
-        datasets.data[name] = np.zeros([grid.shape[0],len(names)])\
+        datasets.data[name] = np.zeros([grid.shape[0],len(np.atleast_1d(names))])\
                                                         .astype(object)
         datasets.data[name][:,:] = None
-        for i in xrange(len(this_name)):
+        for i in xrange(len(np.atleast_1d(this_name))):
             ww = np.where(names == this_name[i])[0][0]
             datasets.data[name][:,ww] = grid[:,i]
         datasets.data.location = np.array(locations).T
@@ -524,12 +537,12 @@ def read_numpy(self,filename,name,info=[]):
         datasets.name.control = np.array(control)
         datasets.name.qlocation = limits
         datasets.name.bands = np.array(bands)
-        datasets.data.sd = np.zeros([grid.shape[0],len(names)])\
+        datasets.data.sd = np.zeros([grid.shape[0],len(np.atleast_1d(names))])\
                                                         .astype(object)
         # for i in xrange(grid.shape[0]):
         # datasets.data.sd[i,:] = self.options.sd
         datasets.data.sd[:,:] = None
-        for i in xrange(len(this_name)):
+        for i in xrange(len(np.atleast_1d(this_name))):
             ww = np.where(names == this_name[i])[0][0]
             datasets.data.sd[:,ww] = sd[:,i]
         datasets.name.sd = np.array(names)
@@ -632,11 +645,11 @@ def read_input_file(self,filename,name,info=[]):
                 location = ['time']
             else:
                 location = 'time row col'.split()
+    location = np.array([i.replace('[','').replace(']','') for i in location])
     try:
         limits = self.name.qlocation
     except:
         limits = set_default_limits(location)
-
     try:
         names = np.array(self._state.name.state)
     except:
@@ -648,6 +661,7 @@ def read_input_file(self,filename,name,info=[]):
     limits = np.array(check_limits_valid(limits))
 
     sd_params = []
+    names = np.atleast_1d(names)
     try:
         for i in xrange(len(names)):
             sd_params.append("sd-%s"%names[i])
@@ -664,11 +678,11 @@ def read_input_file(self,filename,name,info=[]):
         except:
             names = bands
         sd_params = []
-        for i in xrange(len(names)):
+        for i in xrange(len(np.atleast_1d(names))):
             sd_params.append("sd-%s"%names[i])
         sd_params = np.array(sd_params)
         sd = np.zeros(sd_params.shape[0])
-        for i in xrange(len(names)):
+        for i in xrange(len(np.atleast_1d(names))):
             this = np.where(np.array(bands) == names[i])[0]
             if this.size:
                 sd[i] = float(basic[2+nbands+this[0]])
@@ -678,7 +692,7 @@ def read_input_file(self,filename,name,info=[]):
         #location = extras
         else:
             params = ['time']
-        nlocation = len(params)
+        nlocation = len(np.atleast_1d(params))
         params.extend("mask vza vaa sza saa".split())
         params.extend(bands)
         if fmt == 'BRDF-UCL':
@@ -693,9 +707,9 @@ def read_input_file(self,filename,name,info=[]):
     # loop over self._state.name.location and see which
     # columns appear in params
     loccols = []
-    for i in xrange(len(location)):
+    for i in xrange(len(np.atleast_1d(location))):
         ccc = find_col(location[i])
-        if len(ccc):
+        if len(np.atleast_1d(ccc)):
             loccols.append(ccc[0])
         else:
             loccols.append(0)
@@ -708,10 +722,18 @@ def read_input_file(self,filename,name,info=[]):
             control=self.Name.control
         except:
             control = 'mask vza vaa sza saa'.split()
+    try:
+        if len(np.atleast_1d(control)) == 0:
+            control = np.array("mask".split())
+    except:
+        if control.size == 0:
+            control = np.array("mask".split())
     control = control.reshape(control.size)
+    #strip out superflous brackets
+    control = np.array([i.replace('[','').replace(']','') for i in control])
     for i in xrange(control.size):
         ccc = find_col(control[i])
-        if len(ccc):
+        if len(np.atleast_1d(ccc)):
             controlcols.append(ccc[0])
     # if the datatype is y, then we get the names from the file
     # which we suppose by default to be anything
@@ -733,7 +755,7 @@ def read_input_file(self,filename,name,info=[]):
         p_orig = params
         wnames = []
         wsdnames = []
-        for i in xrange(len(p_orig)):
+        for i in xrange(len(np.atleast_1d(p_orig))):
             taken = False
             params = control 
             taken = taken or \
@@ -758,7 +780,7 @@ def read_input_file(self,filename,name,info=[]):
     f.close()
     # check to see if there is a mask column
     is_mask = 'mask' in params
-    want_mask = 'mask' in control
+    want_mask = True or  'mask' in control
 
     # so we need a grid to stroe the data
     # [p,t,r,c ...] or similar
@@ -769,36 +791,49 @@ def read_input_file(self,filename,name,info=[]):
     qlocations = []
     controls = []
     sd2 = []
-    maxi = [(limits[i,1]-limits[i,0]*1.)/limits[i,2] for i in xrange(len(limits))]
-    for i in xrange(len(data)):
+    maxi = [(limits[i,1]-limits[i,0]*1.)/limits[i,2] for i in xrange(len(np.atleast_1d(limits)))]
+    for i in xrange(len(np.atleast_1d(data))):
         ok = True
         liner = data[i].split()
-        get_col = lambda index,liner : float(len(index) and liner[index])
+        get_col = lambda index,liner : float(len(np.atleast_1d(index)) and liner[index])
         ldata = []
-        for c in xrange(len(location)):
+        for c in xrange(len(np.atleast_1d(location))):
             ldata.append(get_col(loccols[c],liner))
         qldata = quantize_location(ldata,limits)
         if (np.array(qldata) < 0).all() or (maxi - np.array(qldata) < 0).all():
 	    ok = False
         cdata = []
-        for c in xrange(len(controlcols)):
-            if want_mask and not is_mask and control[c] == 'mask':
+        for c in xrange(len(np.atleast_1d(controlcols))):
+            if want_mask and not is_mask and \
+			(control[c] == 'mask' or control[c] == '[mask]'):
                 cdata.append(1)
             else:
                 cdata.append(get_col(controlcols[c],liner))
-        this = np.zeros(len(names))
-        this[:] = None
-        # this will set unread fields to nan
-        for (j,k) in enumerate(wnames):
-            if np.array(k).size >0:
-                this[j] = float(liner[k[0]])
-        that = np.zeros(len(names))
-        that[:] = None
-        # this will set unread fields to nan
-        for (j,k) in enumerate(wsdnames):
-            if np.array(k[0]).shape[0] > 0:
-                that[j] = float(liner[k[0]])
+	# check the mask value
+        try:
+	    if not (want_mask and not is_mask):
+	        c = np.where(control=='mask')[0]
+	        if c.size == 0: c = np.where(control=='[mask]')[0]
+                if c.size == 0:
+	 	    ok = True
+	        elif int(cdata[c]) != 1:
+	            ok = False  
+        except:
+	    ok = True
+            cdata.append(1)  
         if ok:
+ 	    this = np.zeros(len(np.atleast_1d(names)))
+            this[:] = None
+            # this will set unread fields to nan
+            for (j,k) in enumerate(wnames):
+                if np.array(k).size >0:
+                    this[j] = float(liner[k[0]])
+            that = np.zeros(len(np.atleast_1d(names)))
+            that[:] = None
+            # this will set unread fields to nan
+            for (j,k) in enumerate(wsdnames):
+                if np.array(k[0]).shape[0] > 0:
+                    that[j] = float(liner[k[0]])
             locations.extend(ldata)
             controls.append(cdata)
             qlocations.append(qldata)
@@ -808,7 +843,7 @@ def read_input_file(self,filename,name,info=[]):
     sd2a = np.array(sd2)
     if sd2a.flatten().sum() > 0:
         sd = sd2a
-    n_samples = len(data)
+    n_samples = len(np.atleast_1d(data))
     data = {}
     name = {}
     data['state'] = np.array(grid)
@@ -829,8 +864,11 @@ def read_input_file(self,filename,name,info=[]):
     data['qlocation'] = np.array(qlocations).reshape(nsamples,nlocations) #+ orig
     name['qlocation'] = np.array(limits)
     name['control'] =  np.array(control)
-    ncontrol = name['control'].shape[0]
-    data['control'] =  np.array(controls).reshape(nsamples,ncontrol)
+    ncontrol = np.max((1,name['control'].shape[0]))
+    if name['control'].shape[0]:
+        data['control'] =  np.array(controls).reshape(nsamples,ncontrol)
+    else:
+        data['control'] =  np.array(controls)
     # only return sd if its > 0
     if sd.size != data['state'].size:
 	try:
@@ -862,6 +900,7 @@ def write_output_file(self,filename,name,info=[]):
 
         '''
     #First check the data is as intended
+    from eoldas_Lib import sortopt
     try:
         f = open(filename,'w')
         if self.Data.sd != None:
@@ -873,7 +912,7 @@ def write_output_file(self,filename,name,info=[]):
 	raise Exception('IOError for %s'%filename)
     except:
 	try:
-	    if 'sd' in self.data:
+	    if 'sd' in self.data.dict():
                 sd = self.data.sd.reshape(self.data.state.shape)
             else:
                 # set to unity
@@ -882,17 +921,21 @@ def write_output_file(self,filename,name,info=[]):
 	except:
 	        return (True,'Failed to open file %s for writing with call to %s'%\
         	        (filename,str('write_output_file')))
+
     if 'f' in self.__dict__ and f.errors != None:
         error_msg = str(f.errors)
         return (True,error_msg)
     # make a guess at what the format is
     try:
-        fmt = self._state.name.fmt
+        fmt = self.options.result.fmt
     except:
         try:
-	    fmt = self.name.fmt
+            fmt = self._state.name.fmt
         except:
-            fmt = None
+            try:
+	        fmt = self.name.fmt
+            except:
+                fmt = None
 
     if fmt == None:
         fmt = 'PARAMETER'
@@ -917,9 +960,9 @@ def write_output_file(self,filename,name,info=[]):
         controls = np.array(self.Data.control)
     except:
         if not gridded:
-            controls = np.array(self.data.control)
+            controls = np.array(sortopt(self.data,'control',[]))
 
-    if gridded and len(state.shape) == 2:
+    if gridded and len(np.atleast_1d(state).shape) == 2:
         # so no location info
         try:
             locations = np.arange(state.shape[0])*name.qlocation[0][2]\
@@ -940,19 +983,33 @@ def write_output_file(self,filename,name,info=[]):
 	    raise Exception("You are trying to ungrid a dataset that wasn't gridded using State.regrid()" +\
 		" so the ungridder information is not available. Either load the data using State.grid " +\
 	        " or set it up some other way or avoid calling this method with this type of data")
-
-    n_samples = state.shape[0]
+    n_samples = np.prod(state.shape)/state.shape[-1]
     location = np.array(name.location)
-    locations = locations.reshape((n_samples,location.shape[0]))
     control = np.array(name.control)
-    if len(control):
-        controls = controls.reshape((n_samples,control.shape[0]))
+    try:
+        locations = locations.reshape((n_samples,location.shape[0]))
+    except:
+	# really its gridded then ...
+	# it just thinks it isnt
+	try:
+	    locations = self.ungridder.location
+            locations = locations.reshape((n_samples,location.shape[0]))
+	except:
+	    raise Exception('Inconsistency in data shape ... locations is not consistent with state')
+    if len(np.atleast_1d(control)):
+	try:
+            controls = controls.reshape((n_samples,control.shape[0]))
+        except:
+            if (control == np.array(['mask'])).all():
+                controls = np.ones(n_samples).reshape((n_samples,control.shape[0]))
+            else:
+                controls = None
     else:
         controls = None
 
     bands = np.array(name.state)
-    nbands = len(bands)
-    names = np.array(name.state)
+    nbands = len(np.atleast_1d(bands))
+    names = np.atleast_1d(np.array(name.state))
 
     grid = state
     if fmt == 'BRDF':
@@ -976,7 +1033,7 @@ def write_output_file(self,filename,name,info=[]):
             R1
             R2 ...
             '''
-        header = "%s %d %d"%(self.headers[fmt],n_samples,nbands)
+        header = "#%s %d %d"%(self.headers[fmt],n_samples,nbands)
         for i in xrange(nbands):
             header = header + ' ' + str(names[i])
         #  for i in xrange(nbands):
@@ -984,38 +1041,55 @@ def write_output_file(self,filename,name,info=[]):
         header = header + '\n'
 
         ww = np.where(location == 'time')[0]
-        if not len(ww):
+        if not len(np.atleast_1d(ww)):
             location = np.zeros([n_samples,1])
             locations = ['time']
         ww = np.where(location == 'time')[0]
         timer = locations[:,ww]
-        ww = np.where(control == 'mask')[0]
-        if not len(ww):
+        try:
+            ww = np.where(control == 'mask')[0]
+        except:
+            ww = [] 
+        if not len(np.atleast_1d(ww)):
             mask = (0*timer+1).astype(int)
-        elif len(control):
+        elif len(np.atleast_1d(control)):
             mask = controls[:,ww].astype(int)
         else:
             mask = (0*timer+1).astype(int)
-        ww = np.where(control== 'vza')[0]
-        if not len(ww):
+        try:
+            ww = np.where(control== 'vza')[0]
+	except:
+            ww = []
+        if not len(np.atleast_1d(ww)):
             vza = timer*0
         else:
             vza = controls[:,ww]
-        ww = np.where(control== 'sza')[0]
-        if not len(ww):
+        try:
+            ww = np.where(control== 'sza')[0]
+        except:
+            ww = []
+        if not len(np.atleast_1d(ww)):
             sza = timer*0
         else:
             sza = controls[:,ww]
-        ww = np.where(control== 'raa')[0]
-        if not len(ww):
-
-            ww1 = np.where(control== 'saa')[0]
-            if not len(ww1):
+	try:
+            ww = np.where(control== 'raa')[0]
+	except:
+            ww = []
+        if not len(np.atleast_1d(ww)):
+	    try:
+                ww1 = np.where(control== 'saa')[0]
+	    except:
+	        ww1 = []
+            if not len(np.atleast_1d(ww1)):
                 saa = timer*0
             else:
                 saa = controls[:,ww1]
-            ww1 = np.where(control== 'vaa')[0]
-            if not len(ww1):
+	    try:
+                ww1 = np.where(control== 'vaa')[0]
+	    except:
+	        ww1 = []
+            if not len(np.atleast_1d(ww1)):
                 vaa = timer*0
             else:
                 vaa = controls[:,ww1]
@@ -1064,7 +1138,7 @@ def write_output_file(self,filename,name,info=[]):
         #for i in xrange(nbands):
         #    header = header + ' ' + str(sd[0,i])
         header = header + '\n'
-        for i in xrange(len(location)):
+        for i in xrange(len(np.atleast_1d(location))):
             header1 = header1 + ' ' + location[i]
         header1 = header1 + '\n'
         header = header + header1
@@ -1076,29 +1150,29 @@ def write_output_file(self,filename,name,info=[]):
         #ww = np.where(location == 'time')[0]
         #timer = locations[:,ww]
         ww = np.where(control == 'mask')[0]
-        if not len(ww):
+        if not len(np.atleast_1d(ww)):
             mask = (0*timer+1).astype(int)
         else:
             mask = controls[:,ww].astype(int)
         ww = np.where(control== 'vza')[0]
-        if not len(ww):
+        if not len(np.atleast_1d(ww)):
             vza = timer*0
         else:
             vza = controls[:,ww]
         ww = np.where(control== 'sza')[0]
-        if not len(ww):
+        if not len(np.atleast_1d(ww)):
             sza = timer*0
         else:
             sza = controls[:,ww]
         ww = np.where(control== 'raa')[0]
-        if not len(ww):
+        if not len(np.atleast_1d(ww)):
             ww1 = np.where(control== 'saa')[0]
-            if not len(ww1):
+            if not len(np.atleast_1d(ww1)):
                 saa = timer*0
             else:
                 saa = controls[:,ww1]
             ww1 = np.where(control== 'vaa')[0]
-            if not len(ww1):
+            if not len(np.atleast_1d(ww1)):
                 vaa = timer*0
             else:
                 vaa = controls[:,ww1]
@@ -1110,11 +1184,11 @@ def write_output_file(self,filename,name,info=[]):
         todo = np.hstack((todo,grid))
         todo = np.hstack((todo,sd))
     elif fmt == 'PARAMETERS':
-        ndim = len(location)
+        ndim = len(np.atleast_1d(location))
         header = '#%s'%self.headers[fmt]
         for i in xrange(ndim):
             header = header + ' ' + location[i]
-        ndim = len(control)
+        ndim = len(np.atleast_1d(control))
         for i in xrange(ndim):
             header = header + ' ' + control[i]
         for i in xrange(names.size):
@@ -1122,15 +1196,17 @@ def write_output_file(self,filename,name,info=[]):
         for i in xrange(names.size):
             header = header + ' ' + 'sd-%s'%names[i]
         header = header + '\n'
-        if len(control):
+        if len(np.atleast_1d(control)):
             todo = np.hstack((locations,controls))
         else:
             todo = locations
+        grid = grid.reshape(np.array(grid.shape).prod()/grid.shape[-1],grid.shape[-1])
+        sd = sd.reshape(np.array(grid.shape).prod()/grid.shape[-1],grid.shape[-1])
         todo = np.hstack((todo,grid))
         todo = np.hstack((todo,sd))
     elif fmt == 'PARAMETERS-V2':
         # dummy
-        ndim = len(location)
+        ndim = len(np.atleast_1d(location))
         header = '#%s'%self.headers[fmt]
         for i in xrange(ndim):
             header = header + ' ' + location[i]
@@ -1153,11 +1229,11 @@ def write_output_file(self,filename,name,info=[]):
     np.savetxt(ff2.name,todo,fmt=('%11.6f'))
     # read in the formatted data as lines & write straight after the header
     fa = open(ff2.name)
+    ff2.close()
     f.writelines(fa.readlines())
     # close both files ... I dont know if you can close the tmp file earlier
     #  to ensure flushed output ...?
     f.close()
-    ff2.close()
     return (False,'Data written to %s with %s'% (filename,str \
                                                  ('write_output_file')))
 
