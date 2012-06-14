@@ -392,7 +392,9 @@ class DModel_Operator ( Operator ):
 	'''
 	x,Cx1,xshape,y,Cy1,yshape = self.getxy()
 	J,J_prime = self.J_prime() 
-	xshape = self.x.state.shape
+	#`xshape = self.x.state.shape
+        # 14 June 2012 : plewis got the wrng shape for some reason
+        xshape = self.linear.C1.shape
 
 	if not 'linear' in self.dict():
 	    self.linear = ParamStorage()
