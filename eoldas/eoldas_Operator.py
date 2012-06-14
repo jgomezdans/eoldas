@@ -1312,7 +1312,7 @@ class Operator ( ParamStorage ):
 	# the operator here is I()
 	# so we return C-1
 	J,J_prime_0 = self.J_prime()
-	return J,J_prime_0 , np.eye(Cy1)
+	return J,J_prime_0 , np.diag(Cy1)
 
 
     def J_prime_prime_approx ( self ):
