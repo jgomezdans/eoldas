@@ -13,10 +13,11 @@ from eoldas_DModel_Operator import *
 from eoldas_Observation_Operator import *
 from eoldas_Kernel_Operator import *
 from eoldas_Solver import *
+from eoldas_ParamStorage import ParamStorage
+from eoldas_Parser import Parser
+#from eoldas_Solver import eoldas_Solver as Solver
+
 class eoldas(Parser):
-    from eoldas_ParamStorage import ParamStorage
-    from eoldas_Parser import Parser
-    from eoldas_Solver import eoldas_Solver as Solver
     
     '''
     The Earth Observation Land Data Assimilation System: EOLDAS 
@@ -84,7 +85,7 @@ class eoldas(Parser):
             return
 
         self.thisname = name
-        solver = Solver(self,logger=self.logger,name=self.thisname+'.solver')
+        solver = eoldas_Solver(self,logger=self.logger,name=self.thisname+'.solver')
         self.general = sortopt(self.root[0],'general',ParamStorage())
         self.general.write_results = sortopt(self.general,'write_results',True)
         self.general.calc_posterior_unc = sortopt(self.general,'calc_posterior_unc',False)
@@ -92,16 +93,17 @@ class eoldas(Parser):
         self.solver = solver
         self.logger.info('testing full cost functions')
         for i in xrange(len(solver.confs.infos)):
-        self.logger.info('%d/%d ...'%(i+1,len(solver.confs.infos)))
+            self.logger.info('%d/%d ...'%(i+1,len(solver.confs.infos)))
             # try an initial solver.prep(i)
-        J = solver.cost(None)
-        J_prime = solver.cost_df(None)
-        self.logger.info('done')
+            J = solver.cost(None)
+            J_prime = solver.cost_df(None)
+            self.logger.info('done')
 
         # give the user some info on where the log file is
         # in case theyve forgotten
         print 'logging to',self.general.logfile
-        def solve(self,unc=None,write=None):
+        
+    def solve(self,unc=None,write=None):
         '''
         Run the solver
             
@@ -112,9 +114,9 @@ class eoldas(Parser):
             
         '''
         if unc == None:
-        unc = self.general.calc_posterior_unc
-    if write == None:
-        write = self.general.write_results
+            unc = self.general.calc_posterior_unc
+        if write == None:
+            write = self.general.write_results
         solver = self.solver
         for i in xrange(len(solver.confs.infos)):
             solver.prep(i)
@@ -122,10 +124,10 @@ class eoldas(Parser):
             J_prime = solver.cost_df(None)
             # run the solver
         if not self.general.passer:
-                solver.solver()
+            solver.solver()
             # Hessian
             if unc:
-                solver.uncertainty()
+                    solver.uncertainty()
             # write out the state
             if write:
                 solver.write()
