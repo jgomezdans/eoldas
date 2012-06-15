@@ -27,7 +27,7 @@ setup(name='eoldas',
       #packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=False,
-      install_requires=["SemiDiscrete>1.0.0"],
+      #install_requires=["SemiDiscrete>1.0.0"],
           # -*- Extra requirements: -*-
           # It require the RT codes, but the package names are still in flux
           #],
