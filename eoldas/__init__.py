@@ -94,8 +94,8 @@ class eoldas(Parser):
         for i in xrange(len(solver.confs.infos)):
         self.logger.info('%d/%d ...'%(i+1,len(solver.confs.infos)))
             # try an initial solver.prep(i)
-            J = solver.cost(None)
-            J_prime = solver.cost_df(None)
+        J = solver.cost(None)
+        J_prime = solver.cost_df(None)
         self.logger.info('done')
 
         # give the user some info on where the log file is
