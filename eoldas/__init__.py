@@ -88,7 +88,7 @@ class eoldas(Parser):
         self.general = sortopt(self.root[0],'general',ParamStorage())
         self.general.write_results = sortopt(self.general,'write_results',True)
         self.general.calc_posterior_unc = sortopt(self.general,'calc_posterior_unc',False)
-    self.general.passer = sortopt(self.general,'passer',False)
+        self.general.passer = sortopt(self.general,'passer',False)
         self.solver = solver
         self.logger.info('testing full cost functions')
         for i in xrange(len(solver.confs.infos)):
@@ -100,8 +100,8 @@ class eoldas(Parser):
 
         # give the user some info on where the log file is
         # in case theyve forgotten
-    print 'logging to',self.general.logfile
-    def solve(self,unc=None,write=None):
+        print 'logging to',self.general.logfile
+        def solve(self,unc=None,write=None):
         '''
         Run the solver
             
