@@ -335,7 +335,7 @@ class DModel_Operator ( Operator ):
 	   	m[ww2+ww] = m[ww2+ww] + slocations[ww]
         # fix for edge conditions
         dd = m.copy()
-        dd = dd.reshape(tuple([np.array(self.linear.x2shape).prod()])*2)
+        dd = dd.reshape(tuple([np.array(self.linear.x2shape[:-1]).prod()])*2)
         ddw = np.where(dd.diagonal() == 0)[0]
         for d in (ddw):
             ds = -dd[d,:].sum()
