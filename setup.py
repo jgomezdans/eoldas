@@ -8,7 +8,7 @@ MAINTAINER = 'Jose Gomez-Dans/NCEO & University College London'
 MAINTAINER_EMAIL = "j.gomez-dans@ucl.ac.uk"
 URL = 'http://github.com/jgomezdans/eoldas'
 LICENSE = 'Undecided'
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 DOWNLOAD_URL="https://github.com/jgomezdans/eoldas/zipball/master"
 
 setup(name='eoldas',
@@ -27,7 +27,10 @@ setup(name='eoldas',
       #packages=find_packages(exclude=['ez_setup', 'examples', 'tests']),
       include_package_data=True,
       zip_safe=False,
-      #install_requires=["SemiDiscrete>1.0.0"],
+      install_requires=["semidiscrete1>0.9",			
+			"semidiscrete2>0.9",
+			"semidiscrete3>0.9",
+			"semidiscrete4>0.9"],
           # -*- Extra requirements: -*-
           # It require the RT codes, but the package names are still in flux
           #],
