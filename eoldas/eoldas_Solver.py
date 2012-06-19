@@ -162,8 +162,11 @@ class eoldas_Solver(ParamStorage):
                     self.prep(i)
             xopt = np.zeros(self.nmask1+self.nmask2)
         J,J_prime = self.root.cost()
-        self.J_prime = xopt*0.        
-        self.unloader(self.J_prime,J_prime.reshape(self.root.x.state.shape))
+        self.J_prime = xopt*0.      
+        try:  
+            self.unloader(self.J_prime,J_prime.reshape(self.root.x.state.shape))
+        except:
+            self.unloader(self.J_prime,J_prime)
         return np.array(J).flatten()[0]
     
     cost_df = lambda self,x:self.J_prime
@@ -388,8 +391,8 @@ class eoldas_Solver(ParamStorage):
             return
 
         xstate[self.mask1] = xopt[:self.nmask1].flatten()
-        for i in self.wmask2:
-            xstate[...,i] = xopt[self.nmask1+i]
+        for n,i in enumerate(self.wmask2):
+            xstate[...,i] = xopt[self.nmask1+n]
             
     def unloader(self,xopt,xstate,M=False):
         '''
@@ -401,10 +404,13 @@ class eoldas_Solver(ParamStorage):
 	    MM = mask1.T * mask1
 	    out = xstate[MM].reshape(n,n)
             return out
-                
-        xopt[:self.nmask1] = xstate[self.mask1].flatten()
-        for i in self.wmask2:
-            xopt[self.nmask1+i] = xstate[...,i][0] 
+       
+        xstate = (xstate.copy()).reshape(self.mask1.shape)
+         
+        xopt[:self.nmask1] = xstate[self.mask1]        
+        #xopt[:self.nmask1] = xstate[self.mask1].flatten()
+        for n,i in enumerate(self.wmask2):
+            xopt[self.nmask1+n] = xstate[...,i][0] 
     
     def writeHx(self,filename=None,format=None,fwd=True):
         '''
