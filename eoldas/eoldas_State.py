@@ -513,6 +513,11 @@ class State(ParamStorage):
                     grid[loc][:] = thisdata
                 else:
                     grid[loc][:] += thisdata
+         # LEWIS 20 June 2012
+            if self.Name.datatype == 'x':
+                # take mean
+                for loc in np.where(ngrid>1)[0]:
+                    grid[loc][:] = grid[loc][:]/float(ngrid[loc])
         wheregrid = np.where(ngrid>0)
         self.Name.gridder = ParamStorage()
         self.Name.gridder.nd = len(self.Name.qlocation)
