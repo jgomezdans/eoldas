@@ -327,6 +327,7 @@ class State(ParamStorage):
                 self.apply_defaults(self._state,self.options)
                 if self.grid:
                     if 'location' in self.Name.dict().keys():
+			#pdb.set_trace()
                         self.regrid()
             else:
                 ParamStorage.__setattr__(self,name,value)
@@ -425,7 +426,6 @@ class State(ParamStorage):
             wheregrid  : where grid points are data points
             
         '''
-
         try: 
             qlocation = self.Data.qlocation
             has_data = True
@@ -442,9 +442,10 @@ class State(ParamStorage):
 	    # somehow the magic reader hasnt worked      
  	    raise Exception("Datafile %s hasn't been interpreted as state data"\
 							%self.Data.state)  
-        if self.Data.state.size == 1 and self.Data.state == np.array(None):
+	
+        if np.array(self.Data.state).size == 1 and np.array(self.Data.state) == np.array(None):
             has_data = False
-                
+	            
         datatype = self.options.datatype
         if datatype == 'y':
             self.logger.info("Not loading grid as datatype is y")
@@ -472,22 +473,31 @@ class State(ParamStorage):
         nparams = len(default)
         x = []
         minx = []
+	stepx = []
+	# number of location dimensions == nd
         for i in xrange(nd):
             xmin = qlocation[:,i].min()
             xmax = qlocation[:,i].max()
+	    xstep = 1
             lim = limits[i]
             if lim[0] != None:
                 xmin = lim[0]
             if lim[1] != None:
                 xmax = lim[1] 
-            #x.append(xmax-xmin+1)
+	    if lim[2] != None:
+		xstep = lim[2]
+            # LEWIS: 20 June 2012 ERROR if xstep used
+            # x.append((xmax-xmin + 1)/xstep)
             x.append((xmax-xmin)/xstep + 1)
             minx.append(xmin)
+	    stepx.append(xstep)
         self.Name.qlocation_min = minx   
+        self.Name.qlocation_step = stepx
         # x contains the number of desired samples 
         # in each dimension
         x.append(nparams)
         minx.append(0)
+	stepx.append(0)
         # now loop over all observations and place in grid
         ntot = np.array(x).prod()
         grid = np.zeros(ntot).reshape(tuple(x))
@@ -513,11 +523,12 @@ class State(ParamStorage):
                     grid[loc][:] = thisdata
                 else:
                     grid[loc][:] += thisdata
-         # LEWIS 20 June 2012
+            # LEWIS 20 June 2012
             if self.Name.datatype == 'x':
                 # take mean
                 for loc in np.where(ngrid>1)[0]:
                     grid[loc][:] = grid[loc][:]/float(ngrid[loc])
+
         wheregrid = np.where(ngrid>0)
         self.Name.gridder = ParamStorage()
         self.Name.gridder.nd = len(self.Name.qlocation)
@@ -528,6 +539,7 @@ class State(ParamStorage):
         self.Data.gridder.wheregrid = wheregrid
         self.Name.gridder.grid = minx
         self.Name.gridder.sdgrid = minx
+	self.Name.gridder.stepx = stepx
         self.Name.gridder.wheregrid = wheregrid[0].size
         self.Data.gridder.ngrid = x
 
@@ -538,7 +550,7 @@ class State(ParamStorage):
         ss[-1] = nloc
         ss = tuple(ss)
         qlocation_min = minx
-
+	qlocation_step = stepx
         locations = np.zeros(ss)
         qlocations = np.zeros(ss,dtype=int)
         for i in xrange(nloc):
@@ -546,26 +558,25 @@ class State(ParamStorage):
             for jj in xrange(ss[i]):
                 if i == 0:
                     qlocations[jj,...,i] = jj
-                    locations[jj,...,i] = jj + qlocation_min[i]
+                    locations[jj,...,i] = jj*stepx[i] + qlocation_min[i]
                 elif i == 1:
                     qlocations[:,jj,...,i] = jj
-                    locations[:,jj,...,i] = jj  + qlocation_min[i]
+                    locations[:,jj,...,i] = jj*stepx[i]  + qlocation_min[i]
                 elif i == 2:
                     qlocations[:,:,jj,...,i] = jj
-                    locations[:,:,jj,...,i] = jj + qlocation_min[i]
+                    locations[:,:,jj,...,i] = jj*stepx[i] + qlocation_min[i]
                 elif i == 3:
                     qlocations[:,:,:,jj,...,i] = jj
-                    locations[:,:,:,jj,...,i] = jj + qlocation_min[i]
+                    locations[:,:,:,jj,...,i] = jj*stepx[i] + qlocation_min[i]
                 elif i == 4:
                     qlocations[:,:,:,:,jj,...,i] = jj
-                    locations[:,:,:,:,jj,...,i] = jj + qlocation_min[i]
+                    locations[:,:,:,:,jj,...,i] = jj*stepx[i] + qlocation_min[i]
                 else:
                     raise Exception('How many dimensions in your dataset ??? > 4 ??? thats ridiculous'+\
                                 " ... I can't write that ")
 	self.ungridder.qlocation = qlocations
 	self.ungridder.location = locations
 	self.ungridder.nloc = nloc
-	
 	                    
     
     def tester(self):
