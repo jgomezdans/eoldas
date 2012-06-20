@@ -480,7 +480,8 @@ class State(ParamStorage):
                 xmin = lim[0]
             if lim[1] != None:
                 xmax = lim[1] 
-            x.append(xmax-xmin+1)
+            #x.append(xmax-xmin+1)
+            x.append((xmax-xmin)/xstep + 1)
             minx.append(xmin)
         self.Name.qlocation_min = minx   
         # x contains the number of desired samples 
