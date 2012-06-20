@@ -5,7 +5,7 @@ import numpy as np
 from eoldas_State import State
 from eoldas_Lib import sortopt,sortlog
 from eoldas_ParamStorage import ParamStorage
-import resource
+#import resource
 from eoldas_Spectral import Spectral
 from eoldas_Files import writer
 import os
@@ -844,9 +844,9 @@ class Operator ( ParamStorage ):
 	    Cy1 = Cy1.flatten()
         return x,Cx1,xshape,y,Cy1,yshape
 
-    memory = lambda self : self.logger.info("Memory: %.3f GB"%\
-                                ((resource.getrusage(0).ru_maxrss*1./\
-                                  float(resource.getpagesize()))/(1024**3)))
+    #memory = lambda self : self.logger.info("Memory: %.3f GB"%\
+    #                            ((resource.getrusage(0).ru_maxrss*1./\
+    #                              float(resource.getpagesize()))/(1024**3)))
 
     def write(self,filename,dataset,fmt='pickle'):
         '''
