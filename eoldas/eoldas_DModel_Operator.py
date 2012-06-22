@@ -307,7 +307,7 @@ class DModel_Operator ( Operator ):
                 if self.rt_model.wraparound_mod == 0:
 	            slocations[ww] = slocations2[ww]
 	        else:
-		    slocations[ww] = -np.fmod( mod - slocations[ww],mod)
+		    slocations[ww] = -np.fmod( mod - slocations[ww]/lim[-1],mod)
 	    else:   # none
 	        slocations[ww] = 0.
             ww = np.where(slocations != 0)
