@@ -30,7 +30,11 @@ setup(name='eoldas',
       install_requires=["semidiscrete1>0.9",			
 			"semidiscrete2>0.9",
 			"semidiscrete3>0.9",
-			"semidiscrete4>0.9"],
+			"semidiscrete4>0.9",
+			"OpenOpt>=0.39", 
+			"FuncDesigner>=0.39",
+			"DerApproximator>=0.39",
+			"SpaceFuncs>=0.39"],
           # -*- Extra requirements: -*-
           # It require the RT codes, but the package names are still in flux
           #],
