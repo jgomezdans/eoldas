@@ -297,9 +297,7 @@ class DModel_Operator ( Operator ):
                 return 0
             self.novar = False
             ww = np.where(slocations > 0)
-            # error found in wraparound when lim[-1] is not 1: fixed by normalising by lim[-1]
-            # Lewis 22 June
-	    mod = int(self.rt_model.wraparound_mod)/float(lim[-1]) or slocations.shape[self.linear.gamma_loc]
+	    mod = int(float(self.rt_model.wraparound_mod)/lim[-1]+0.5) or slocations.shape[self.linear.gamma_loc]
             if self.rt_model.wraparound == 'reflexive':
                 slocations[ww] = 0.
                 #slocations[ww] = -np.fmod(mod - slocations[ww],mod)
@@ -307,7 +305,7 @@ class DModel_Operator ( Operator ):
                 if self.rt_model.wraparound_mod == 0:
 	            slocations[ww] = slocations2[ww]
 	        else:
-		    slocations[ww] = -np.fmod( mod - slocations[ww]/lim[-1],mod)
+		    slocations[ww] = -lim[-1] * np.fmod( mod - slocations[ww]/lim[-1],mod)
 	    else:   # none
 	        slocations[ww] = 0.
             ww = np.where(slocations != 0)
@@ -337,6 +335,7 @@ class DModel_Operator ( Operator ):
 	   	m[ww2+ww] = m[ww2+ww] + slocations[ww]
         # fix for edge conditions
         dd = m.copy()
+        #import pdb; pdb.set_trace()
         dd = dd.reshape(tuple([np.array(self.linear.x2shape[:-1]).prod()])*2)
         ddw = np.where(dd.diagonal() == 0)[0]
         for d in (ddw):

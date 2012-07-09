@@ -5,7 +5,7 @@ import numpy as np
 from eoldas_State import State
 from eoldas_Lib import sortopt,sortlog
 from eoldas_ParamStorage import ParamStorage
-#import resource
+import resource
 from eoldas_Spectral import Spectral
 from eoldas_Files import writer
 import os
@@ -472,10 +472,14 @@ class Operator ( ParamStorage ):
 	    www = np.where(delta != 0)
             H1x = self.H(x1.flatten())
 	    for j in xrange(nb):
-	        out[www,i,www,j] = (H1x - self.Hx)[www,j].flatten()/delta[www]
+                try:
+	            out[www,i,www,j] = (H1x - self.Hx)[www,j].flatten()/delta[www]
+                except:
+                    out[www,i,www,j] = (H1x - self.Hx).reshape(xshape)[www,j].flatten()/delta[www]
         self.linear.H_prime = out.reshape([xnparam*xloc,xloc*nb])
         return self.linear.H_prime
-    
+        # checked: this is the correct way to stack these   
+ 
     def unloader(self,smallx,fullx,all=False,sum=False,M=False):
         '''
             Utility to return a full state vector representation 
@@ -496,14 +500,33 @@ class Operator ( ParamStorage ):
             if M == True:
                 MM = self.loaderMask.flatten()
                 n = fullx.flatten().shape[0]
-                out = np.zeros((n,n))
+                out = np.zeros((self.loaderMask.shape)*2)
                 ww = np.where(MM)[0]
                 count = 0
-                for i in ww:
-                    this = self.unloader(smallx[count],fullx,sum=sum)
-                    out[i,:] = this.flatten()
-                    count += 1
-                return out
+                stmp = np.array(smallx).reshape((self.x.state.shape)*2)
+                # ww is the list of time slots/params that will need
+                # loading to because they have data
+                for ns in xrange(self.loaderMask.shape[0]):
+                    # step over each
+                    thismask = self.loaderMask[ns]
+                    if (thismask == 1).sum():
+                      if 'xlookup' in self.dict():
+                        for i in self.xlookup[count]:
+                          jc = 0
+                          for j in xrange(len(thismask)):
+                            if thismask[j] == 1:
+                              this = self.unloader(stmp[i,jc,...],fullx,sum=sum)
+                              jc += 1
+                              if sum:
+                                out[ns,j,:,:] +=  this
+                              else:
+                                out[ns,j,:,:] =  this
+                      else:
+                        sqLoader = (np.matrix(MM).T * np.matrix(MM))
+                        out = out.reshape(n,n)
+                        out[sqLoader] = smallx.flatten()
+                      count += 1
+                return out.reshape(n,n)
             out = fullx*0.
             if 'xlookup' in self.dict():
                 stmp = smallx.reshape(self.x.state.shape)
@@ -813,7 +836,17 @@ class Operator ( ParamStorage ):
             Cx1 = self.x.sd.astype(float)
         else:
             Cx1 = 0.*x
-      
+        if len(np.array(Cx1).flatten()) != len(np.array(x).flatten()):
+            # then may have to unpack to a bigger version of Cx1
+            if 'xlookup' in self.dict():
+                try:
+                    Cx1 = Cx1.reshape(len(self.xlookup),xshape[-1])
+                    Cx1a = np.zeros_like(self.x.state)
+                    for i in xrange(len(self.xlookup)):
+                      Cx1a[self.xlookup[i],:] = Cx1[i,:]
+                    Cx1 = Cx1a
+                except:
+                  pass 
         if 'y' in self.dict():
             y = self.y.state.astype(float).flatten()
             yshape = self.y.state.shape
@@ -844,9 +877,9 @@ class Operator ( ParamStorage ):
 	    Cy1 = Cy1.flatten()
         return x,Cx1,xshape,y,Cy1,yshape
 
-    #memory = lambda self : self.logger.info("Memory: %.3f GB"%\
-    #                            ((resource.getrusage(0).ru_maxrss*1./\
-    #                              float(resource.getpagesize()))/(1024**3)))
+    memory = lambda self : self.logger.info("Memory: %.3f GB"%\
+                                ((resource.getrusage(0).ru_maxrss*1./\
+                                  float(resource.getpagesize()))/(1024**3)))
 
     def write(self,filename,dataset,fmt='pickle'):
         '''
@@ -1419,7 +1452,7 @@ class Operator ( ParamStorage ):
             # into that required by this operator
             op.loader(self)
 	    try:
-		mask = (op.loaderMask.T * op.loaderMask)
+		mask = (np.matrix(op.loaderMask.flatten()).T * np.matrix(op.loaderMask.flatten()))
 		x,Cx1,xshape,y,Cy1,yshape = op.getxy()
 		Ihessian = self.Ihessian[mask]
 		nn = np.sqrt(Ihessian.size).astype(int)
@@ -1430,7 +1463,7 @@ class Operator ( ParamStorage ):
                 # and here we need a version of this that is expanded
                 op.xlookup = np.atleast_1d(op.xlookup)
                 nsamples = len(op.xlookup)
-                ntotal = np.array(op.xlookup).size
+                ntotal = np.array([len(op.xlookup[i]) for i in xrange(nsamples)]).sum()
 		if  nsamples != ntotal:
 		    # need to expand
 		    nn = H_prime.shape[0]
