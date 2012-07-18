@@ -1521,7 +1521,12 @@ class Operator ( ParamStorage ):
             Jprime = -np.array(self.linear.d1 * Cy1 * np.matrix(H_prime_x).T)[0]
 	# Jprime should be the same shape as self.x.state
 	if Jprime.size == self.x.state.size **2:
-	    Jprime = Jprime.diagonal()
+            try:
+                Jprime = -np.matrix(self.linear.d1) * np.matrix(Cy1 * H_prime_x)
+                if Jprime.size == self.x.state.size **2:
+                    Jprime = Jprime.diagonal()
+            except:
+	        Jprime = Jprime.diagonal()
         return J,Jprime
         
             #return J,
