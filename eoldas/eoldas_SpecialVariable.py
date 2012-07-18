@@ -258,8 +258,9 @@ class SpecialVariable(ParamStorage):
                 # assumed to be (data,name) or [data,name]
                 #self.__set_if_unset('data',ParamStorage())
                 #self.__set_if_unset('name',ParamStorage())
-                ParamStorage.__setattr__(self['data'],this,value[0]) 
-                ParamStorage.__setattr__(self['name'],this,value[1])
+                #ParamStorage.__setattr__(self['data'],this,value[0]) 
+                #ParamStorage.__setattr__(self['name'],this,value[1])
+                ParamStorage.__setattr__(self['data'],this,np.array(value))
             elif t == str:
                 # set the term
                 #self.__set_if_unset('data',ParamStorage())
