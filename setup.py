@@ -8,7 +8,7 @@ MAINTAINER = 'Jose Gomez-Dans/NCEO & University College London'
 MAINTAINER_EMAIL = "j.gomez-dans@ucl.ac.uk"
 URL = 'http://github.com/jgomezdans/eoldas'
 LICENSE = 'Undecided'
-VERSION = "1.0.8"
+VERSION = "1.1.0"
 DOWNLOAD_URL="https://github.com/jgomezdans/eoldas/zipball/master"
 
 setup(name='eoldas',
