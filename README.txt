@@ -6,5 +6,8 @@ eoldas
 :Date: $Date: 2012-05-21 16:00:00 +0000  $
 :Description: README file
 
+Please see `the EOLDAS documentation webpage
+<http://jgomezdans.github.com/eoldas_release>`_
+
 An Earth Observation Land Data Assimilation System (EO-LDAS). This package blah
 blah blah
